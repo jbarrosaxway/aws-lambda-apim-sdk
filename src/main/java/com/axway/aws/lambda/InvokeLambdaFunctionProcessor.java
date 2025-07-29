@@ -8,6 +8,7 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.services.lambda.AWSLambda;
 import com.amazonaws.services.lambda.AWSLambdaClientBuilder;
 import com.amazonaws.services.lambda.model.InvokeRequest;
@@ -65,7 +66,84 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		Entity clientConfig = ctx.getEntity(entity.getReferenceValue("clientConfiguration"));
 		
 		// Use AWSFactory like S3 pattern (following S3 pattern exactly)
-		return (AWSLambdaClientBuilder) AWSFactory.createLambdaClientBuilder(ctx, AWSFactory.getCredentials(ctx, entity), clientConfig);
+		AWSCredentials awsCredentials = AWSFactory.getCredentials(ctx, entity);
+		AWSCredentialsProvider credentialsProvider = new AWSStaticCredentialsProvider(awsCredentials);
+		
+		// Create client builder with credentials (following S3 pattern exactly)
+		AWSLambdaClientBuilder builder = AWSLambdaClientBuilder.standard()
+			.withCredentials(credentialsProvider);
+		
+		// Apply client configuration if available (following S3 pattern exactly)
+		if (clientConfig != null) {
+			ClientConfiguration clientConfiguration = createClientConfiguration(clientConfig);
+			builder.withClientConfiguration(clientConfiguration);
+		}
+		
+		return builder;
+	}
+	
+	/**
+	 * Creates ClientConfiguration from entity (following S3 pattern exactly)
+	 */
+	private ClientConfiguration createClientConfiguration(Entity entity) {
+		ClientConfiguration clientConfig = new ClientConfiguration();
+		
+		if (entity == null) {
+			return clientConfig;
+		}
+		
+		// Apply configuration settings (following S3 pattern exactly)
+		setIntegerConfig(clientConfig, entity, "connectionTimeout", (config, value) -> config.setConnectionTimeout(value));
+		setIntegerConfig(clientConfig, entity, "maxConnections", (config, value) -> config.setMaxConnections(value));
+		setIntegerConfig(clientConfig, entity, "maxErrorRetry", (config, value) -> config.setMaxErrorRetry(value));
+		setIntegerConfig(clientConfig, entity, "socketTimeout", (config, value) -> config.setSocketTimeout(value));
+		setIntegerConfig(clientConfig, entity, "proxyPort", (config, value) -> config.setProxyPort(value));
+		
+		setStringConfig(clientConfig, entity, "protocol", (config, value) -> config.setProtocol(Protocol.valueOf(value)));
+		setStringConfig(clientConfig, entity, "userAgent", (config, value) -> config.setUserAgent(value));
+		setStringConfig(clientConfig, entity, "proxyHost", (config, value) -> config.setProxyHost(value));
+		setStringConfig(clientConfig, entity, "proxyUsername", (config, value) -> config.setProxyUsername(value));
+		setStringConfig(clientConfig, entity, "proxyDomain", (config, value) -> config.setProxyDomain(value));
+		setStringConfig(clientConfig, entity, "proxyWorkstation", (config, value) -> config.setProxyWorkstation(value));
+		
+		// Handle encrypted proxy password
+		if (entity.containsKey("proxyPassword")) {
+			try {
+				byte[] proxyPasswordBytes = entity.getEncryptedValue("proxyPassword");
+				clientConfig.setProxyPassword(new String(proxyPasswordBytes));
+			} catch (Exception e) {
+				Trace.error("Error decrypting proxy password: " + e.getMessage());
+			}
+		}
+		
+		return clientConfig;
+	}
+	
+	/**
+	 * Helper method to set integer configuration values
+	 */
+	private void setIntegerConfig(ClientConfiguration config, Entity entity, String fieldName, 
+			java.util.function.BiConsumer<ClientConfiguration, Integer> setter) {
+		String valueStr = entity.getStringValue(fieldName);
+		if (valueStr != null && !valueStr.trim().isEmpty()) {
+			try {
+				Integer value = Integer.valueOf(valueStr.trim());
+				setter.accept(config, value);
+			} catch (NumberFormatException e) {
+				Trace.error("Invalid " + fieldName + " value: " + valueStr);
+			}
+		}
+	}
+	
+	/**
+	 * Helper method to set string configuration values
+	 */
+	private void setStringConfig(ClientConfiguration config, Entity entity, String fieldName, 
+			java.util.function.BiConsumer<ClientConfiguration, String> setter) {
+		String value = entity.getStringValue(fieldName);
+		if (value != null && !value.trim().isEmpty()) {
+			setter.accept(config, value);
+		}
 	}
 
 	@Override
