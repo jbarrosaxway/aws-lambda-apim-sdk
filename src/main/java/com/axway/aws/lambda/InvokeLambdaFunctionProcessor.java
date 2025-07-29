@@ -43,6 +43,26 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 
 	// Content body selector (following SQS pattern exactly)
 	private Selector<String> bodyToString = new Selector<>("${content.body}", String.class);
+	
+	// WhatToSend enum (following SQS pattern exactly)
+	enum WhatToSend {
+		ContentBody, Attribute;
+	}
+	
+	// Selectors for payload handling (following SQS pattern exactly)
+	protected Selector<String> whatToSend;
+	protected Selector<String> attributeName;
+	protected Selector<String> contentType;
+	protected Selector<String> contentEncoding;
+	
+	/**
+	 * Payload class (following SQS pattern exactly)
+	 */
+	class Payload {
+		String content;
+		String contentType;
+		String contentEncoding;
+	}
 
 	@Override
 	public void filterAttached(ConfigContext ctx, Entity entity) throws EntityStoreException {
@@ -56,6 +76,12 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		this.qualifier = new Selector<String>(entity.getStringValue("qualifier"), String.class);
 		this.retryDelay = new Selector<Integer>(entity.getStringValue("retryDelay"), Integer.class);
 		this.memorySize = new Selector<Integer>(entity.getStringValue("memorySize"), Integer.class);
+		
+		// Initialize payload selectors (following SQS pattern exactly)
+		this.whatToSend = new Selector<String>(entity.getStringValue("whatToSend"), String.class);
+		this.attributeName = new Selector<String>(entity.getStringValue("attributeName"), String.class);
+		this.contentType = new Selector<String>(entity.getStringValue("contentType"), String.class);
+		this.contentEncoding = new Selector<String>(entity.getStringValue("contentEncoding"), String.class);
 		
 		// Get client builder (following S3 pattern exactly)
 		this.lambdaClientBuilder = getLambdaClientBuilder(ctx, entity);
@@ -151,12 +177,20 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	/**
 	 * Gets the payload following SQS pattern exactly
 	 */
-	private String getPayload(Message m) {
-		Body b = (Body)m.get("content.body");
-		String payload = this.bodyToString.substitute(m);
+	private Payload getPayload(Message m) {
+		Payload payload = new Payload();
+		WhatToSend sendWhat = WhatToSend.valueOf((String)this.whatToSend.substitute(m));
 		
-		if (payload == null || payload.trim().isEmpty()) {
-			payload = "{}";
+		if (sendWhat == WhatToSend.ContentBody) {
+			Body b = (Body)m.get("content.body");
+			payload.content = (String)this.bodyToString.substitute(m);
+			// Simplified - avoid encoding/content type issues
+			payload.contentEncoding = "UTF-8";
+			payload.contentType = "application/json";
+		} else if (sendWhat == WhatToSend.Attribute) {
+			payload.content = (String)this.attributeName.substitute(m);
+			payload.contentEncoding = (String)this.contentEncoding.substitute(m);
+			payload.contentType = (String)this.contentType.substitute(m);
 		}
 		
 		return payload;
@@ -189,20 +223,20 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			}
 			
 			// Get body content using getPayload method (following SQS pattern exactly)
-			String body = getPayload(m);
+			Payload body = getPayload(m);
 			
-			if (body == null || body.trim().isEmpty()) {
-				body = "{}";
+			if (body.content == null || body.content.trim().isEmpty()) {
+				body.content = "{}";
 			}
 			
 			// Validate JSON format
-			if (!body.trim().startsWith("{") && !body.trim().startsWith("[")) {
-				Trace.debug("Body is not valid JSON, using empty JSON: " + body);
-				body = "{}";
+			if (!body.content.trim().startsWith("{") && !body.content.trim().startsWith("[")) {
+				Trace.debug("Body is not valid JSON, using empty JSON: " + body.content);
+				body.content = "{}";
 			}
 			
 			// Prepare payload
-			ByteBuffer payload = ByteBuffer.wrap(body.getBytes(StandardCharsets.UTF_8));
+			ByteBuffer payload = ByteBuffer.wrap(body.content.getBytes(StandardCharsets.UTF_8));
 			
 			// Validate required fields
 			if (awsRegionValue == null || awsRegionValue.trim().isEmpty()) {
