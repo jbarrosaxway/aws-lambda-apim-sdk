@@ -1,0 +1,5 @@
+[33m18850a3[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m feat: otimização completa do código Java - performance, thread safety e robustez
+[33m3536eb4[m[33m ([m[1;33mtag: [m[1;33mv1.0.16[m[33m)[m chore: update version to 1.0.16 [skip ci]
+[33m043292f[m Fix YAML class reference to use renamed InvokeLambdaFunctionFilter class
+[33m9374d4d[m Fix Java class references and constructor names after renaming
+[33m9696aa9[m Merge branch 'master' of https://github.com/jbarrosaxway/aws-lambda-apim-sdk

@@ -5,13 +5,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Tipos de log do Invoke Lambda Function
- * Thread-safe e imutável
+ * Log types for Invoke Lambda Function
+ * Thread-safe and immutable
  */
 public class InvokeLambdaFunctionLogType {
     
     /**
-     * Map imutável com os tipos de log disponíveis
+     * Immutable map with available log types
      */
     public static final Map<String, String> LOG_TYPES;
     
@@ -23,9 +23,9 @@ public class InvokeLambdaFunctionLogType {
     }
     
     /**
-     * Construtor privado para evitar instanciação
+     * Private constructor to prevent instantiation
      */
     private InvokeLambdaFunctionLogType() {
-        // Utility class - não deve ser instanciada
+        // Utility class - should not be instantiated
     }
 } 

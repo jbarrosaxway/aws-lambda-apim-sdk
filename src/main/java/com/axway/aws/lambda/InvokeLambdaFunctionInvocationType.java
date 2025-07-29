@@ -5,13 +5,13 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Tipos de invocação do Invoke Lambda Function
- * Thread-safe e imutável
+ * Invocation types for Invoke Lambda Function
+ * Thread-safe and immutable
  */
 public class InvokeLambdaFunctionInvocationType {
     
     /**
-     * Map imutável com os tipos de invocação disponíveis
+     * Immutable map with available invocation types
      */
     public static final Map<String, String> INVOCATION_TYPES;
     
@@ -24,9 +24,9 @@ public class InvokeLambdaFunctionInvocationType {
     }
     
     /**
-     * Construtor privado para evitar instanciação
+     * Private constructor to prevent instantiation
      */
     private InvokeLambdaFunctionInvocationType() {
-        // Utility class - não deve ser instanciada
+        // Utility class - should not be instantiated
     }
 } 

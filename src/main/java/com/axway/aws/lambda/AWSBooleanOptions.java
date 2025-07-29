@@ -6,20 +6,20 @@ import java.util.Map;
 
 /**
  * Utility class to provide boolean options for ComboAttribute
- * Thread-safe e imutável
+ * Thread-safe and immutable
  */
 public class AWSBooleanOptions {
     
     /**
-     * Construtor privado para evitar instanciação
+     * Private constructor to prevent instantiation
      */
     private AWSBooleanOptions() {
-        // Utility class - não deve ser instanciada
+        // Utility class - should not be instantiated
     }
     
     /**
      * Provides boolean options for UI components
-     * @return Map imutável com opções booleanas
+     * @return Immutable map with boolean options
      */
     public static Map<String, String> booleanOptions() {
         Map<String, String> options = new HashMap<>();

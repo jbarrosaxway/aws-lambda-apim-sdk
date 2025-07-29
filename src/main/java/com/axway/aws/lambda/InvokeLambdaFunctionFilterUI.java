@@ -11,13 +11,13 @@ import com.vordel.client.manager.filter.DefaultGUIFilter;
 import com.vordel.client.manager.wizard.VordelPage;
 
 /**
- * Interface gráfica para o filtro de invocação de funções AWS Lambda
- * Fornece páginas de configuração e log
+ * Graphical interface for AWS Lambda function invocation filter
+ * Provides configuration and log pages
  */
 public class InvokeLambdaFunctionFilterUI extends DefaultGUIFilter {
 	
 	/**
-	 * Chave da imagem para o ícone do filtro
+	 * Image key for filter icon
 	 */
 	private static final String IMAGE_KEY = "amazon";
 	

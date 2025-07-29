@@ -5,13 +5,13 @@ import org.eclipse.swt.widgets.Composite;
 import com.vordel.client.manager.wizard.VordelPage;
 
 /**
- * Página de configuração para o filtro de invocação de funções AWS Lambda
- * Fornece interface gráfica para configuração dos parâmetros
+ * Configuration page for AWS Lambda function invocation filter
+ * Provides graphical interface for parameter configuration
  */
 public class InvokeLambdaFunctionFilterPage extends VordelPage {
 
 	/**
-	 * Construtor da página de configuração
+	 * Configuration page constructor
 	 */
 	public InvokeLambdaFunctionFilterPage() {
 		super("AWSLambdaPage");
