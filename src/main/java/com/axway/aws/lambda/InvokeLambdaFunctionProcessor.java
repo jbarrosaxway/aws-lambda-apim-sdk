@@ -25,6 +25,7 @@ import com.vordel.es.EntityStoreException;
 import com.vordel.trace.Trace;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import com.vordel.mime.Body;
 
 public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	
@@ -39,6 +40,9 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	protected Selector<String> qualifier;
 	protected Selector<Integer> retryDelay;
 	protected Selector<Integer> memorySize;
+
+	// Content body selector (following SQS pattern exactly)
+	private Selector<String> bodyToString = new Selector<>("${content.body}", String.class);
 
 	@Override
 	public void filterAttached(ConfigContext ctx, Entity entity) throws EntityStoreException {
@@ -170,25 +174,12 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 				memorySizeValue = 128; // Default 128 MB
 			}
 			
-			// Get body content (following S3 pattern)
-			Object bodyObj = m.get("content.body");
-			String body;
+			// Get body content (following SQS pattern exactly)
+			Body b = (Body)m.get("content.body");
+			String body = this.bodyToString.substitute(m);
 			
-			if (bodyObj == null) {
+			if (body == null || body.trim().isEmpty()) {
 				body = "{}";
-			} else if (bodyObj instanceof String) {
-				body = (String) bodyObj;
-				if (body.trim().isEmpty()) {
-					body = "{}";
-				}
-			} else {
-				// If it's not a string, try to get the string representation
-				body = bodyObj.toString();
-				// Check if it's a class name (starts with 'com.' or similar)
-				if (body.startsWith("com.") || body.startsWith("java.") || body.startsWith("org.")) {
-					Trace.debug("Body appears to be a class name, using empty JSON: " + body);
-					body = "{}";
-				}
 			}
 			
 			// Validate JSON format
