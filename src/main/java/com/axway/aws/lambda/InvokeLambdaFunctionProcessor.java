@@ -160,14 +160,15 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	/**
 	 * Gets the payload following SQS pattern exactly
 	 */
-	private Payload getPayload(Message m) {
-		Payload payload = new Payload();
+	private String getPayload(Message m) {
 		Body b = (Body)m.get("content.body");
-		payload.content = (String)this.bodyToString.substitute(m);
-		// Simplified - use default values to avoid compilation issues
-		payload.contentEncoding = "UTF-8";
-		payload.contentType = "application/json";
-		return payload;
+		String content = (String)this.bodyToString.substitute(m);
+		
+		if (content == null || content.trim().isEmpty()) {
+			content = "{}";
+		}
+		
+		return content;
 	}
 
 	@Override
@@ -197,20 +198,16 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			}
 			
 			// Get body content using getPayload method (following SQS pattern exactly)
-			Payload body = getPayload(m);
-			
-			if (body.content == null || body.content.trim().isEmpty()) {
-				body.content = "{}";
-			}
+			String bodyContent = getPayload(m);
 			
 			// Validate JSON format
-			if (!body.content.trim().startsWith("{") && !body.content.trim().startsWith("[")) {
-				Trace.debug("Body is not valid JSON, using empty JSON: " + body.content);
-				body.content = "{}";
+			if (!bodyContent.trim().startsWith("{") && !bodyContent.trim().startsWith("[")) {
+				Trace.debug("Body is not valid JSON, using empty JSON: " + bodyContent);
+				bodyContent = "{}";
 			}
 			
 			// Prepare payload
-			ByteBuffer payload = ByteBuffer.wrap(body.content.getBytes(StandardCharsets.UTF_8));
+			ByteBuffer payload = ByteBuffer.wrap(bodyContent.getBytes(StandardCharsets.UTF_8));
 			
 			// Validate required fields
 			if (awsRegionValue == null || awsRegionValue.trim().isEmpty()) {
