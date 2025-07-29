@@ -6,16 +6,27 @@ import java.util.Map;
 
 /**
  * Tipos de invocação do Invoke Lambda Function
+ * Thread-safe e imutável
  */
 public class InvokeLambdaFunctionInvocationType {
     
-    public static Map<String, String> invocationType;
+    /**
+     * Map imutável com os tipos de invocação disponíveis
+     */
+    public static final Map<String, String> INVOCATION_TYPES;
     
     static {
         Map<String, String> init = new HashMap<>();
         init.put("RequestResponse", "RequestResponse");
         init.put("Event", "Event");
         init.put("DryRun", "DryRun");
-        invocationType = Collections.unmodifiableMap(init);
+        INVOCATION_TYPES = Collections.unmodifiableMap(init);
+    }
+    
+    /**
+     * Construtor privado para evitar instanciação
+     */
+    private InvokeLambdaFunctionInvocationType() {
+        // Utility class - não deve ser instanciada
     }
 } 

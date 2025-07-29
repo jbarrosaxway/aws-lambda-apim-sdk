@@ -7,15 +7,26 @@ import com.vordel.es.EntityStoreException;
 import com.vordel.mime.Body;
 import com.vordel.mime.HeaderSet;
 
+/**
+ * Filtro para invocação de funções AWS Lambda
+ * Configura as propriedades necessárias para o processamento
+ */
 public class InvokeLambdaFunctionFilter extends DefaultFilter {
 
 	@Override
 	protected final void setDefaultPropertyDefs() {
+		// Propriedades de entrada
 		this.reqProps.add(new PropDef("content.body", Body.class));
 		this.reqProps.add(new PropDef("http.headers", HeaderSet.class));
-		genProps.add(new PropDef("aws.lambda.response",String.class));
-		genProps.add(new PropDef("aws.lambda.http.status.code",Integer.class));
-
+		
+		// Propriedades de saída
+		genProps.add(new PropDef("aws.lambda.response", String.class));
+		genProps.add(new PropDef("aws.lambda.http.status.code", Integer.class));
+		genProps.add(new PropDef("aws.lambda.executed.version", String.class));
+		genProps.add(new PropDef("aws.lambda.log.result", String.class));
+		genProps.add(new PropDef("aws.lambda.memory.size", Integer.class));
+		genProps.add(new PropDef("aws.lambda.error", String.class));
+		genProps.add(new PropDef("aws.lambda.function.error", String.class));
 	}
 
 	@Override
@@ -33,5 +44,4 @@ public class InvokeLambdaFunctionFilter extends DefaultFilter {
 		// libraries by lazily loading the class when required.
 		return Class.forName("com.axway.aws.lambda.InvokeLambdaFunctionFilterUI");
 	}
-
 }

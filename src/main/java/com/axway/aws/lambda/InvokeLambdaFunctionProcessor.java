@@ -5,14 +5,9 @@ import com.amazonaws.ClientConfiguration;
 import com.amazonaws.Protocol;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
-import com.amazonaws.auth.InstanceProfileCredentialsProvider;
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.AWSLambda;
 import com.amazonaws.services.lambda.AWSLambdaClientBuilder;
 import com.amazonaws.services.lambda.model.InvokeRequest;
@@ -21,17 +16,14 @@ import com.vordel.circuit.CircuitAbortException;
 import com.vordel.circuit.Message;
 import com.vordel.circuit.MessageProcessor;
 import com.vordel.circuit.aws.AWSFactory;
-import com.vordel.common.Dictionary;
 import com.vordel.config.Circuit;
 import com.vordel.config.ConfigContext;
 import com.vordel.el.Selector;
 import com.vordel.es.Entity;
 import com.vordel.es.EntityStoreException;
-import com.vordel.es.ESPK;
-import com.vordel.security.util.SecureString;
 import com.vordel.trace.Trace;
-import java.io.File;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
 public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	
@@ -44,7 +36,6 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	protected Selector<Integer> retryDelay;
 	protected Selector<Integer> memorySize;
 	protected Selector<String> credentialType;
-	protected Selector<Boolean> useIAMRole;
 	protected Selector<String> awsCredential;
 	protected Selector<String> clientConfiguration;
 	protected Selector<String> credentialsFilePath;
@@ -63,18 +54,17 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		super.filterAttached(ctx, entity);
 		
 		// Initialize selectors for all fields (following S3 pattern)
-		this.functionName = new Selector(entity.getStringValue("functionName"), String.class);
-		this.awsRegion = new Selector(entity.getStringValue("awsRegion"), String.class);
-		this.invocationType = new Selector(entity.getStringValue("invocationType"), String.class);
-		this.logType = new Selector(entity.getStringValue("logType"), String.class);
-		this.qualifier = new Selector(entity.getStringValue("qualifier"), String.class);
-		this.retryDelay = new Selector(entity.getStringValue("retryDelay"), Integer.class);
-		this.memorySize = new Selector(entity.getStringValue("memorySize"), Integer.class);
-		this.credentialType = new Selector(entity.getStringValue("credentialType"), String.class);
-		this.useIAMRole = new Selector(entity.getStringValue("useIAMRole"), Boolean.class);
-		this.awsCredential = new Selector(entity.getStringValue("awsCredential"), String.class);
-		this.clientConfiguration = new Selector(entity.getStringValue("clientConfiguration"), String.class);
-		this.credentialsFilePath = new Selector(entity.getStringValue("credentialsFilePath") != null ? entity.getStringValue("credentialsFilePath") : "", String.class);
+		this.functionName = new Selector<String>(entity.getStringValue("functionName"), String.class);
+		this.awsRegion = new Selector<String>(entity.getStringValue("awsRegion"), String.class);
+		this.invocationType = new Selector<String>(entity.getStringValue("invocationType"), String.class);
+		this.logType = new Selector<String>(entity.getStringValue("logType"), String.class);
+		this.qualifier = new Selector<String>(entity.getStringValue("qualifier"), String.class);
+		this.retryDelay = new Selector<Integer>(entity.getStringValue("retryDelay"), Integer.class);
+		this.memorySize = new Selector<Integer>(entity.getStringValue("memorySize"), Integer.class);
+		this.credentialType = new Selector<String>(entity.getStringValue("credentialType"), String.class);
+		this.awsCredential = new Selector<String>(entity.getStringValue("awsCredential"), String.class);
+		this.clientConfiguration = new Selector<String>(entity.getStringValue("clientConfiguration"), String.class);
+		this.credentialsFilePath = new Selector<String>(entity.getStringValue("credentialsFilePath"), String.class);
 		
 		// Get client configuration (following S3 pattern exactly)
 		Entity clientConfig = ctx.getEntity(entity.getReferenceValue("clientConfiguration"));
@@ -83,19 +73,18 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		this.lambdaClientBuilder = getLambdaClientBuilder(ctx, entity, clientConfig);
 		
 		Trace.info("=== Lambda Configuration (Following S3 Pattern) ===");
-		Trace.info("Function: " + (functionName != null ? functionName.getLiteral() : "dynamic"));
-		Trace.info("Region: " + (awsRegion != null ? awsRegion.getLiteral() : "dynamic"));
-		Trace.info("Invocation Type: " + (invocationType != null ? invocationType.getLiteral() : "dynamic"));
-		Trace.info("Log Type: " + (logType != null ? logType.getLiteral() : "dynamic"));
-		Trace.info("Qualifier: " + (qualifier != null ? qualifier.getLiteral() : "dynamic"));
-		Trace.info("Retry Delay: " + (retryDelay != null ? retryDelay.getLiteral() : "dynamic"));
-		Trace.info("Memory Size: " + (memorySize != null ? memorySize.getLiteral() : "dynamic"));
-		Trace.info("Credential Type: " + (credentialType != null ? credentialType.getLiteral() : "dynamic"));
-		Trace.info("Use IAM Role: " + (useIAMRole != null ? useIAMRole.getLiteral() : "false"));
-		Trace.info("AWS Credential: " + (awsCredential != null ? awsCredential.getLiteral() : "dynamic"));
-		Trace.info("Client Configuration: " + (clientConfiguration != null ? clientConfiguration.getLiteral() : "dynamic"));
-		Trace.info("Credentials File Path: " + (credentialsFilePath != null ? credentialsFilePath.getLiteral() : "dynamic"));
-		Trace.info("Client Config Entity: " + (clientConfig != null ? "configured" : "default"));
+		Trace.debug("Function: " + (functionName != null ? functionName.getLiteral() : "dynamic"));
+		Trace.debug("Region: " + (awsRegion != null ? awsRegion.getLiteral() : "dynamic"));
+		Trace.debug("Invocation Type: " + (invocationType != null ? invocationType.getLiteral() : "dynamic"));
+		Trace.debug("Log Type: " + (logType != null ? logType.getLiteral() : "dynamic"));
+		Trace.debug("Qualifier: " + (qualifier != null ? qualifier.getLiteral() : "dynamic"));
+		Trace.debug("Retry Delay: " + (retryDelay != null ? retryDelay.getLiteral() : "dynamic"));
+		Trace.debug("Memory Size: " + (memorySize != null ? memorySize.getLiteral() : "dynamic"));
+		Trace.debug("Credential Type: " + (credentialType != null ? credentialType.getLiteral() : "dynamic"));
+		Trace.debug("AWS Credential: " + (awsCredential != null ? awsCredential.getLiteral() : "dynamic"));
+		Trace.debug("Client Configuration: " + (clientConfiguration != null ? clientConfiguration.getLiteral() : "dynamic"));
+		Trace.debug("Credentials File Path: " + (credentialsFilePath != null ? credentialsFilePath.getLiteral() : "dynamic"));
+		Trace.debug("Client Config Entity: " + (clientConfig != null ? "configured" : "default"));
 	}
 
 	/**
@@ -115,7 +104,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		if (clientConfig != null) {
 			ClientConfiguration clientConfiguration = createClientConfiguration(ctx, clientConfig);
 			builder.withClientConfiguration(clientConfiguration);
-			Trace.info("Applied custom client configuration");
+			Trace.debug("Applied custom client configuration");
 		} else {
 			Trace.debug("Using default client configuration");
 		}
@@ -127,9 +116,9 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	 * Gets the appropriate credentials provider based on configuration
 	 */
 	private AWSCredentialsProvider getCredentialsProvider(ConfigContext ctx, Entity entity) throws EntityStoreException {
-		String credentialTypeValue = credentialType.getLiteral();
-		Trace.info("=== Credentials Provider Debug ===");
-		Trace.info("Credential Type Value: " + credentialTypeValue);
+		String credentialTypeValue = credentialType != null ? credentialType.getLiteral() : null;
+		Trace.debug("=== Credentials Provider Debug ===");
+		Trace.debug("Credential Type Value: " + credentialTypeValue);
 		
 		if ("iam".equals(credentialTypeValue)) {
 			// Use IAM Role (EC2 Instance Profile or ECS Task Role)
@@ -137,11 +126,11 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			return new EC2ContainerCredentialsProviderWrapper();
 		} else if ("file".equals(credentialTypeValue)) {
 			// Use credentials file
-			Trace.info("Credentials Type is 'file', checking credentialsFilePath...");
-			String filePath = credentialsFilePath.getLiteral();
-			Trace.info("File Path: " + filePath);
-			Trace.info("File Path is null: " + (filePath == null));
-			Trace.info("File Path is empty: " + (filePath != null && filePath.trim().isEmpty()));
+			Trace.debug("Credentials Type is 'file', checking credentialsFilePath...");
+			String filePath = credentialsFilePath != null ? credentialsFilePath.getLiteral() : null;
+			Trace.debug("File Path: " + filePath);
+			Trace.debug("File Path is null: " + (filePath == null));
+			Trace.debug("File Path is empty: " + (filePath != null && filePath.trim().isEmpty()));
 			if (filePath != null && !filePath.trim().isEmpty()) {
 				try {
 					Trace.info("Using AWS credentials file: " + filePath);
@@ -149,11 +138,11 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 					return new ProfileCredentialsProvider(filePath, "default");
 				} catch (Exception e) {
 					Trace.error("Error loading credentials file: " + e.getMessage());
-					Trace.info("Falling back to DefaultAWSCredentialsProviderChain");
+					Trace.debug("Falling back to DefaultAWSCredentialsProviderChain");
 					return new DefaultAWSCredentialsProviderChain();
 				}
 			} else {
-				Trace.info("Credentials file path not specified, using DefaultAWSCredentialsProviderChain");
+				Trace.debug("Credentials file path not specified, using DefaultAWSCredentialsProviderChain");
 				return new DefaultAWSCredentialsProviderChain();
 			}
 		} else {
@@ -161,11 +150,11 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			Trace.info("Using explicit AWS credentials via AWSFactory");
 			try {
 				AWSCredentials awsCredentials = AWSFactory.getCredentials(ctx, entity);
-				Trace.info("AWSFactory.getCredentials() successful");
+				Trace.debug("AWSFactory.getCredentials() successful");
 				return getAWSCredentialsProvider(awsCredentials);
 			} catch (Exception e) {
 				Trace.error("Error getting explicit credentials: " + e.getMessage());
-				Trace.info("Falling back to DefaultAWSCredentialsProviderChain");
+				Trace.debug("Falling back to DefaultAWSCredentialsProviderChain");
 				return new DefaultAWSCredentialsProviderChain();
 			}
 		}
@@ -183,34 +172,21 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		}
 		
 		// Apply configuration settings (following S3 pattern exactly)
-		if (containsKey(entity, "connectionTimeout")) {
-			clientConfig.setConnectionTimeout(entity.getIntegerValue("connectionTimeout"));
-		}
-		if (containsKey(entity, "maxConnections")) {
-			clientConfig.setMaxConnections(entity.getIntegerValue("maxConnections"));
-		}
-		if (containsKey(entity, "maxErrorRetry")) {
-			clientConfig.setMaxErrorRetry(entity.getIntegerValue("maxErrorRetry"));
-		}
-		if (containsKey(entity, "protocol")) {
-			clientConfig.setProtocol(Protocol.valueOf(entity.getStringValue("protocol")));
-		}
-		if (containsKey(entity, "socketTimeout")) {
-			clientConfig.setSocketTimeout(entity.getIntegerValue("socketTimeout"));
-		}
-		if (containsKey(entity, "userAgent")) {
-			clientConfig.setUserAgent(entity.getStringValue("userAgent"));
-		}
-		if (containsKey(entity, "proxyHost")) {
-			clientConfig.setProxyHost(entity.getStringValue("proxyHost"));
-		}
-		if (containsKey(entity, "proxyPort")) {
-			clientConfig.setProxyPort(entity.getIntegerValue("proxyPort"));
-		}
-		if (containsKey(entity, "proxyUsername")) {
-			clientConfig.setProxyUsername(entity.getStringValue("proxyUsername"));
-		}
-		if (containsKey(entity, "proxyPassword")) {
+		setIntegerConfig(clientConfig, entity, "connectionTimeout", (config, value) -> config.setConnectionTimeout(value));
+		setIntegerConfig(clientConfig, entity, "maxConnections", (config, value) -> config.setMaxConnections(value));
+		setIntegerConfig(clientConfig, entity, "maxErrorRetry", (config, value) -> config.setMaxErrorRetry(value));
+		setIntegerConfig(clientConfig, entity, "socketTimeout", (config, value) -> config.setSocketTimeout(value));
+		setIntegerConfig(clientConfig, entity, "proxyPort", (config, value) -> config.setProxyPort(value));
+		
+		setStringConfig(clientConfig, entity, "protocol", (config, value) -> config.setProtocol(Protocol.valueOf(value)));
+		setStringConfig(clientConfig, entity, "userAgent", (config, value) -> config.setUserAgent(value));
+		setStringConfig(clientConfig, entity, "proxyHost", (config, value) -> config.setProxyHost(value));
+		setStringConfig(clientConfig, entity, "proxyUsername", (config, value) -> config.setProxyUsername(value));
+		setStringConfig(clientConfig, entity, "proxyDomain", (config, value) -> config.setProxyDomain(value));
+		setStringConfig(clientConfig, entity, "proxyWorkstation", (config, value) -> config.setProxyWorkstation(value));
+		
+		// Handle encrypted proxy password
+		if (entity.containsKey("proxyPassword")) {
 			try {
 				byte[] proxyPasswordBytes = ctx.getCipher().decrypt(entity.getEncryptedValue("proxyPassword"));
 				clientConfig.setProxyPassword(new String(proxyPasswordBytes));
@@ -218,31 +194,49 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 				Trace.error("Error decrypting proxy password: " + e.getMessage());
 			}
 		}
-		if (containsKey(entity, "proxyDomain")) {
-			clientConfig.setProxyDomain(entity.getStringValue("proxyDomain"));
-		}
-		if (containsKey(entity, "proxyWorkstation")) {
-			clientConfig.setProxyWorkstation(entity.getStringValue("proxyWorkstation"));
-		}
-		if (containsKey(entity, "socketSendBufferSizeHint") && containsKey(entity, "socketReceiveBufferSizeHint")) {
-			clientConfig.setSocketBufferSizeHints(
-				entity.getIntegerValue("socketSendBufferSizeHint"),
-				entity.getIntegerValue("socketReceiveBufferSizeHint")
-			);
+		
+		// Handle socket buffer size hints (both values required)
+		String socketSendBufferSizeHintStr = entity.getStringValue("socketSendBufferSizeHint");
+		String socketReceiveBufferSizeHintStr = entity.getStringValue("socketReceiveBufferSizeHint");
+		if (socketSendBufferSizeHintStr != null && !socketSendBufferSizeHintStr.trim().isEmpty() && 
+			socketReceiveBufferSizeHintStr != null && !socketReceiveBufferSizeHintStr.trim().isEmpty()) {
+			try {
+				Integer socketSendBufferSizeHint = Integer.valueOf(socketSendBufferSizeHintStr.trim());
+				Integer socketReceiveBufferSizeHint = Integer.valueOf(socketReceiveBufferSizeHintStr.trim());
+				clientConfig.setSocketBufferSizeHints(socketSendBufferSizeHint, socketReceiveBufferSizeHint);
+			} catch (NumberFormatException e) {
+				Trace.error("Invalid socket buffer size hint values: " + socketSendBufferSizeHintStr + ", " + socketReceiveBufferSizeHintStr);
+			}
 		}
 		
 		return clientConfig;
 	}
 	
 	/**
-	 * Checks if entity contains a non-empty key (following S3 pattern exactly)
+	 * Helper method to set integer configuration values
 	 */
-	private boolean containsKey(Entity entity, String fieldName) {
-		if (!entity.containsKey(fieldName)) {
-			return false;
+	private void setIntegerConfig(ClientConfiguration config, Entity entity, String fieldName, 
+			java.util.function.BiConsumer<ClientConfiguration, Integer> setter) {
+		String valueStr = entity.getStringValue(fieldName);
+		if (valueStr != null && !valueStr.trim().isEmpty()) {
+			try {
+				Integer value = Integer.valueOf(valueStr.trim());
+				setter.accept(config, value);
+			} catch (NumberFormatException e) {
+				Trace.error("Invalid " + fieldName + " value: " + valueStr);
+			}
 		}
+	}
+	
+	/**
+	 * Helper method to set string configuration values
+	 */
+	private void setStringConfig(ClientConfiguration config, Entity entity, String fieldName, 
+			java.util.function.BiConsumer<ClientConfiguration, String> setter) {
 		String value = entity.getStringValue(fieldName);
-		return value != null && !value.trim().isEmpty();
+		if (value != null && !value.trim().isEmpty()) {
+			setter.accept(config, value);
+		}
 	}
 	
 	/**
@@ -262,7 +256,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		
 		if (lambdaClientBuilder == null) {
 			Trace.error("Invoke Lambda Function client builder was not configured");
-msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not configured");
+			msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not configured");
 			return false;
 		}
 		
@@ -275,20 +269,18 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		Integer retryDelayValue = retryDelay.substitute(msg);
 		Integer memorySizeValue = memorySize.substitute(msg);
 		String credentialTypeValue = credentialType.substitute(msg);
-		Boolean useIAMRoleValue = useIAMRole.substitute(msg);
 		String credentialsFilePathValue = credentialsFilePath.substitute(msg);
 
-		Trace.info("=== Invocation Debug ===");
-		Trace.info("Function Name: " + functionNameValue);
-		Trace.info("Region: " + regionValue);
-		Trace.info("Invocation Type: " + invocationTypeValue);
-		Trace.info("Log Type: " + logTypeValue);
-		Trace.info("Qualifier: " + qualifierValue);
-		Trace.info("Retry Delay: " + retryDelayValue);
-		Trace.info("Memory Size: " + memorySizeValue);
-		Trace.info("Credential Type: " + credentialTypeValue);
-		Trace.info("Use IAM Role: " + useIAMRoleValue);
-		Trace.info("Credentials File Path: " + credentialsFilePathValue);
+		Trace.debug("=== Invocation Debug ===");
+		Trace.debug("Function Name: " + functionNameValue);
+		Trace.debug("Region: " + regionValue);
+		Trace.debug("Invocation Type: " + invocationTypeValue);
+		Trace.debug("Log Type: " + logTypeValue);
+		Trace.debug("Qualifier: " + qualifierValue);
+		Trace.debug("Retry Delay: " + retryDelayValue);
+		Trace.debug("Memory Size: " + memorySizeValue);
+		Trace.debug("Credential Type: " + credentialTypeValue);
+		Trace.debug("Credentials File Path: " + credentialsFilePathValue);
 		
 		// Set default values
 		if (invocationTypeValue == null || invocationTypeValue.trim().isEmpty()) {
@@ -303,8 +295,6 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		if (credentialTypeValue == null || credentialTypeValue.trim().isEmpty()) {
 			credentialTypeValue = "local";
 		}
-		// Determine IAM Role usage based on credential type
-		useIAMRoleValue = "iam".equals(credentialTypeValue);
 		if (memorySizeValue == null) {
 			memorySizeValue = 128; // Default 128 MB
 		}
@@ -314,33 +304,48 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			body = "{}";
 		}
 		
-		Trace.info("Invoking Lambda function with retry...");
-		Trace.info("Using IAM Role: " + useIAMRoleValue);
-		Trace.info("Memory Size: " + memorySizeValue + " MB");
+		// Prepare payload once
+		ByteBuffer payload = ByteBuffer.wrap(body.getBytes(StandardCharsets.UTF_8));
+		
+		// Validate required fields
+		if (regionValue == null || regionValue.trim().isEmpty()) {
+			Trace.error("AWS Region is required but not provided");
+			msg.put("aws.lambda.error", "AWS Region is required but not provided");
+			return false;
+		}
+		
+		if (functionNameValue == null || functionNameValue.trim().isEmpty()) {
+			Trace.error("Function name is required but not provided");
+			msg.put("aws.lambda.error", "Function name is required but not provided");
+			return false;
+		}
+		
+		Trace.debug("Invoking Lambda function with retry...");
+		Trace.debug("Memory Size: " + memorySizeValue + " MB");
 		
 		Exception lastException = null;
 		
 		// Get maxRetries from clientConfiguration (default 3)
 		int maxRetriesValue = 3; // Default value
 		
+		// Create Lambda client once with region
+		AWSLambda lambdaClient = lambdaClientBuilder.withRegion(regionValue).build();
+		
 		for (int attempt = 1; attempt <= maxRetriesValue; attempt++) {
 			try {
-				Trace.info("Attempt " + attempt + " of " + maxRetriesValue);
-				
-				// Create Lambda client with region (following S3 pattern)
-				AWSLambda lambdaClient = lambdaClientBuilder.withRegion(regionValue).build();
+				Trace.debug("Attempt " + attempt + " of " + maxRetriesValue);
 				
 				// Create request
 				InvokeRequest invokeRequest = new InvokeRequest()
 					.withFunctionName(functionNameValue)
-					.withPayload(ByteBuffer.wrap(body.getBytes()))
+					.withPayload(payload)
 					.withInvocationType(invocationTypeValue)
 					.withLogType(logTypeValue);
 				
 				// Add qualifier if specified
 				if (qualifierValue != null && !qualifierValue.trim().isEmpty()) {
 					invokeRequest.setQualifier(qualifierValue);
-					Trace.info("Using qualifier: " + qualifierValue);
+					Trace.debug("Using qualifier: " + qualifierValue);
 				}
 				
 				// Invoke Lambda function
@@ -355,7 +360,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				
 				// If not the last attempt, wait before retrying
 				if (attempt < maxRetriesValue) {
-					Trace.info("Waiting " + retryDelayValue + "ms before next attempt...");
+					Trace.debug("Waiting " + retryDelayValue + "ms before next attempt...");
 					try {
 						Thread.sleep(retryDelayValue);
 					} catch (InterruptedException ie) {
@@ -379,17 +384,17 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	 */
 	private boolean processInvokeResult(InvokeResult invokeResult, Message msg, Integer memorySizeValue) {
 		try {
-			String response = new String(invokeResult.getPayload().array(), "UTF-8");
+			String response = new String(invokeResult.getPayload().array(), StandardCharsets.UTF_8);
 			int statusCode = invokeResult.getStatusCode();
 			
 			// === Lambda Response ===
-			Trace.info("=== Lambda Response ===");
-			Trace.info("Status Code: " + statusCode);
-			Trace.info("Response: " + response);
-			Trace.info("Executed Version: " + invokeResult.getExecutedVersion());
+			Trace.debug("=== Lambda Response ===");
+			Trace.debug("Status Code: " + statusCode);
+			Trace.debug("Response: " + response);
+			Trace.debug("Executed Version: " + invokeResult.getExecutedVersion());
 			
 			if (invokeResult.getLogResult() != null) {
-				Trace.info("Log Result: " + invokeResult.getLogResult());
+				Trace.debug("Log Result: " + invokeResult.getLogResult());
 			}
 			
 			// Store results
