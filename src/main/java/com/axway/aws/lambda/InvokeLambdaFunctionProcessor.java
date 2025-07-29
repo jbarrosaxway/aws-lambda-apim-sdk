@@ -171,8 +171,29 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			}
 			
 			// Get body content (following S3 pattern)
-			String body = m.get("content.body") != null ? m.get("content.body").toString() : "{}";
-			if (body == null || body.trim().isEmpty()) {
+			Object bodyObj = m.get("content.body");
+			String body;
+			
+			if (bodyObj == null) {
+				body = "{}";
+			} else if (bodyObj instanceof String) {
+				body = (String) bodyObj;
+				if (body.trim().isEmpty()) {
+					body = "{}";
+				}
+			} else {
+				// If it's not a string, try to get the string representation
+				body = bodyObj.toString();
+				// Check if it's a class name (starts with 'com.' or similar)
+				if (body.startsWith("com.") || body.startsWith("java.") || body.startsWith("org.")) {
+					Trace.debug("Body appears to be a class name, using empty JSON: " + body);
+					body = "{}";
+				}
+			}
+			
+			// Validate JSON format
+			if (!body.trim().startsWith("{") && !body.trim().startsWith("[")) {
+				Trace.debug("Body is not valid JSON, using empty JSON: " + body);
 				body = "{}";
 			}
 			
