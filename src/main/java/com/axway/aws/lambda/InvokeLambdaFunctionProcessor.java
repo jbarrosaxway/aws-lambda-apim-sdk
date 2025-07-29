@@ -6,13 +6,6 @@ import com.amazonaws.Protocol;
 import com.amazonaws.auth.AWSCredentials;
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.BasicSessionCredentials;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
-import com.amazonaws.auth.profile.ProfileCredentialsProvider;
-import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
-import com.amazonaws.auth.InstanceProfileCredentialsProvider;
-import com.amazonaws.regions.Regions;
 import com.amazonaws.services.lambda.AWSLambda;
 import com.amazonaws.services.lambda.AWSLambdaClientBuilder;
 import com.amazonaws.services.lambda.model.InvokeRequest;
@@ -21,16 +14,12 @@ import com.vordel.circuit.CircuitAbortException;
 import com.vordel.circuit.Message;
 import com.vordel.circuit.MessageProcessor;
 import com.vordel.circuit.aws.AWSFactory;
-import com.vordel.common.Dictionary;
 import com.vordel.config.Circuit;
 import com.vordel.config.ConfigContext;
 import com.vordel.el.Selector;
 import com.vordel.es.Entity;
 import com.vordel.es.EntityStoreException;
-import com.vordel.es.ESPK;
-import com.vordel.security.util.SecureString;
 import com.vordel.trace.Trace;
-import java.io.File;
 import java.nio.ByteBuffer;
 
 public class InvokeLambdaFunctionProcessor extends MessageProcessor {
@@ -182,67 +171,82 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			return clientConfig;
 		}
 		
-		// Apply configuration settings (following S3 pattern exactly)
-		if (containsKey(entity, "connectionTimeout")) {
-			clientConfig.setConnectionTimeout(entity.getIntegerValue("connectionTimeout"));
-		}
-		if (containsKey(entity, "maxConnections")) {
-			clientConfig.setMaxConnections(entity.getIntegerValue("maxConnections"));
-		}
-		if (containsKey(entity, "maxErrorRetry")) {
-			clientConfig.setMaxErrorRetry(entity.getIntegerValue("maxErrorRetry"));
-		}
-		if (containsKey(entity, "protocol")) {
-			clientConfig.setProtocol(Protocol.valueOf(entity.getStringValue("protocol")));
-		}
-		if (containsKey(entity, "socketTimeout")) {
-			clientConfig.setSocketTimeout(entity.getIntegerValue("socketTimeout"));
-		}
-		if (containsKey(entity, "userAgent")) {
-			clientConfig.setUserAgent(entity.getStringValue("userAgent"));
-		}
-		if (containsKey(entity, "proxyHost")) {
-			clientConfig.setProxyHost(entity.getStringValue("proxyHost"));
-		}
-		if (containsKey(entity, "proxyPort")) {
-			clientConfig.setProxyPort(entity.getIntegerValue("proxyPort"));
-		}
-		if (containsKey(entity, "proxyUsername")) {
-			clientConfig.setProxyUsername(entity.getStringValue("proxyUsername"));
-		}
-		if (containsKey(entity, "proxyPassword")) {
+		// Apply configuration settings with optimized single access
+		setIntegerConfig(clientConfig, entity, "connectionTimeout", ClientConfiguration::setConnectionTimeout);
+		setIntegerConfig(clientConfig, entity, "maxConnections", ClientConfiguration::setMaxConnections);
+		setIntegerConfig(clientConfig, entity, "maxErrorRetry", ClientConfiguration::setMaxErrorRetry);
+		setStringConfig(clientConfig, entity, "protocol", (config, value) -> {
 			try {
-				byte[] proxyPasswordBytes = ctx.getCipher().decrypt(entity.getEncryptedValue("proxyPassword"));
-				clientConfig.setProxyPassword(new String(proxyPasswordBytes));
-			} catch (GeneralSecurityException e) {
-				Trace.error("Error decrypting proxy password: " + e.getMessage());
+				config.setProtocol(Protocol.valueOf(value));
+			} catch (IllegalArgumentException e) {
+				Trace.error("Invalid protocol value: " + value);
 			}
-		}
-		if (containsKey(entity, "proxyDomain")) {
-			clientConfig.setProxyDomain(entity.getStringValue("proxyDomain"));
-		}
-		if (containsKey(entity, "proxyWorkstation")) {
-			clientConfig.setProxyWorkstation(entity.getStringValue("proxyWorkstation"));
-		}
-		if (containsKey(entity, "socketSendBufferSizeHint") && containsKey(entity, "socketReceiveBufferSizeHint")) {
-			clientConfig.setSocketBufferSizeHints(
-				entity.getIntegerValue("socketSendBufferSizeHint"),
-				entity.getIntegerValue("socketReceiveBufferSizeHint")
-			);
+		});
+		setIntegerConfig(clientConfig, entity, "socketTimeout", ClientConfiguration::setSocketTimeout);
+		setStringConfig(clientConfig, entity, "userAgent", ClientConfiguration::setUserAgent);
+		setStringConfig(clientConfig, entity, "proxyHost", ClientConfiguration::setProxyHost);
+		setIntegerConfig(clientConfig, entity, "proxyPort", ClientConfiguration::setProxyPort);
+		setStringConfig(clientConfig, entity, "proxyUsername", ClientConfiguration::setProxyUsername);
+		setEncryptedConfig(clientConfig, ctx, entity, "proxyPassword");
+		setStringConfig(clientConfig, entity, "proxyDomain", ClientConfiguration::setProxyDomain);
+		setStringConfig(clientConfig, entity, "proxyWorkstation", ClientConfiguration::setProxyWorkstation);
+		
+		// Handle socket buffer size hints (both must exist)
+		try {
+			Integer sendHint = entity.getIntegerValue("socketSendBufferSizeHint");
+			Integer receiveHint = entity.getIntegerValue("socketReceiveBufferSizeHint");
+			if (sendHint != null && receiveHint != null) {
+				clientConfig.setSocketBufferSizeHints(sendHint, receiveHint);
+			}
+		} catch (Exception e) {
+			// Both fields don't exist, skip silently
 		}
 		
 		return clientConfig;
 	}
 	
 	/**
-	 * Checks if entity contains a non-empty key (following S3 pattern exactly)
+	 * Optimized method to set integer configuration with single access
 	 */
-	private boolean containsKey(Entity entity, String fieldName) {
-		if (!entity.containsKey(fieldName)) {
-			return false;
+	private void setIntegerConfig(ClientConfiguration config, Entity entity, String fieldName, 
+			java.util.function.BiConsumer<ClientConfiguration, Integer> setter) {
+		try {
+			Integer value = entity.getIntegerValue(fieldName);
+			if (value != null) {
+				setter.accept(config, value);
+			}
+		} catch (Exception e) {
+			// Field doesn't exist, skip silently
 		}
-		String value = entity.getStringValue(fieldName);
-		return value != null && !value.trim().isEmpty();
+	}
+	
+	/**
+	 * Optimized method to set string configuration with single access
+	 */
+	private void setStringConfig(ClientConfiguration config, Entity entity, String fieldName, 
+			java.util.function.BiConsumer<ClientConfiguration, String> setter) {
+		try {
+			String value = entity.getStringValue(fieldName);
+			if (value != null && !value.trim().isEmpty()) {
+				setter.accept(config, value);
+			}
+		} catch (Exception e) {
+			// Field doesn't exist, skip silently
+		}
+	}
+	
+	/**
+	 * Optimized method to set encrypted configuration
+	 */
+	private void setEncryptedConfig(ClientConfiguration config, ConfigContext ctx, Entity entity, String fieldName) {
+		try {
+			byte[] encryptedBytes = ctx.getCipher().decrypt(entity.getEncryptedValue(fieldName));
+			config.setProxyPassword(new String(encryptedBytes));
+		} catch (GeneralSecurityException e) {
+			Trace.error("Error decrypting " + fieldName + ": " + e.getMessage());
+		} catch (Exception e) {
+			// Field doesn't exist, skip silently
+		}
 	}
 	
 	/**
