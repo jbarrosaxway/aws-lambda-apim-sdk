@@ -32,28 +32,26 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	protected AWSLambdaClientBuilder lambdaClientBuilder;
 	
 	// Selectors (following S3 pattern exactly)
-	protected Selector<String> region;
+	protected Selector<String> awsRegion;
 	protected Selector<String> functionName;
 	protected Selector<String> invocationType;
 	protected Selector<String> logType;
 	protected Selector<String> qualifier;
 	protected Selector<Integer> retryDelay;
 	protected Selector<Integer> memorySize;
-	protected Selector<String> storageClass;
 
 	@Override
 	public void filterAttached(ConfigContext ctx, Entity entity) throws EntityStoreException {
 		super.filterAttached(ctx, entity);
 		
 		// Initialize selectors (following S3 pattern exactly)
-		this.region = new Selector<String>(entity.getStringValue("region"), String.class);
+		this.awsRegion = new Selector<String>(entity.getStringValue("awsRegion"), String.class);
 		this.functionName = new Selector<String>(entity.getStringValue("functionName"), String.class);
 		this.invocationType = new Selector<String>(entity.getStringValue("invocationType"), String.class);
 		this.logType = new Selector<String>(entity.getStringValue("logType"), String.class);
 		this.qualifier = new Selector<String>(entity.getStringValue("qualifier"), String.class);
 		this.retryDelay = new Selector<Integer>(entity.getStringValue("retryDelay"), Integer.class);
 		this.memorySize = new Selector<Integer>(entity.getStringValue("memorySize"), Integer.class);
-		this.storageClass = new Selector<String>(entity.getStringValue("storageClass"), String.class);
 		
 		// Get client builder (following S3 pattern exactly)
 		this.lambdaClientBuilder = getLambdaClientBuilder(ctx, entity);
@@ -150,15 +148,14 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	public boolean invoke(Circuit c, Message m) throws CircuitAbortException {
 		try {
 			// Get dynamic values using selectors (following S3 pattern)
-			String regionValue = region.substitute(m);
+			String awsRegionValue = awsRegion.substitute(m);
 			String functionNameValue = functionName.substitute(m);
 			String invocationTypeValue = invocationType.substitute(m);
 			String logTypeValue = logType.substitute(m);
 			String qualifierValue = qualifier.substitute(m);
 			Integer retryDelayValue = retryDelay.substitute(m);
 			Integer memorySizeValue = memorySize.substitute(m);
-			String storageClassValue = storageClass.substitute(m);
-
+			
 			// Set default values
 			if (invocationTypeValue == null || invocationTypeValue.trim().isEmpty()) {
 				invocationTypeValue = "RequestResponse";
@@ -183,7 +180,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			ByteBuffer payload = ByteBuffer.wrap(body.getBytes(StandardCharsets.UTF_8));
 			
 			// Validate required fields
-			if (regionValue == null || regionValue.trim().isEmpty()) {
+			if (awsRegionValue == null || awsRegionValue.trim().isEmpty()) {
 				Trace.error("AWS Region is required but not provided");
 				m.put("aws.lambda.error", "AWS Region is required but not provided");
 				return false;
@@ -199,7 +196,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			Trace.debug("Memory Size: " + memorySizeValue + " MB");
 			
 			// Create Lambda client with region (following S3 pattern)
-			lambdaClientBuilder.withRegion(regionValue);
+			lambdaClientBuilder.withRegion(awsRegionValue);
 			AWSLambda lambdaClient = lambdaClientBuilder.build();
 			
 			// Create request
