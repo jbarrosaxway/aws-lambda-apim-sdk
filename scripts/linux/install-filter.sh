@@ -7,7 +7,26 @@
 # For Windows, use: install-filter-windows.ps1 or install-filter-windows.cmd
 
 AXWAY_DIR="/opt/axway/Axway-7.7.0.20240830"
-JAR_FILE="build/libs/aws-lambda-apim-sdk-1.0.1.jar"
+
+# Get version from build.gradle
+VERSION=$(grep "^version " build.gradle | sed 's/version //' | tr -d "'")
+if [ -z "$VERSION" ]; then
+    echo "❌ Could not get version from build.gradle"
+    exit 1
+fi
+
+# Dynamic JAR detection
+JAR_FILE=$(find build/libs -name "aws-lambda-apim-sdk-*.jar" | head -1)
+
+if [ -z "$JAR_FILE" ]; then
+    echo "❌ JAR file not found. Please run './gradlew build' first."
+    echo "📁 Expected location: build/libs/aws-lambda-apim-sdk-${VERSION}.jar"
+    exit 1
+fi
+
+echo "📁 JAR found: $JAR_FILE"
+echo "📏 Size: $(du -h "$JAR_FILE" | cut -f1)"
+
 EXT_LIB_DIR="$AXWAY_DIR/apigateway/groups/group-2/instance-1/ext/lib"
 
 echo "=== Invoke Lambda Function Installation for Axway API Gateway ==="

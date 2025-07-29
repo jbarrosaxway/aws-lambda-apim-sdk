@@ -24,6 +24,15 @@ if [ ! -f "build.gradle" ]; then
     exit 1
 fi
 
+# Get version from build.gradle
+VERSION=$(grep "^version " build.gradle | sed 's/version //' | tr -d "'")
+if [ -z "$VERSION" ]; then
+    echo "❌ Could not get version from build.gradle"
+    exit 1
+fi
+
+echo "📋 Project version: $VERSION"
+
 # Pull the image if needed
 echo "📥 Checking Docker image..."
 docker pull axwayjbarros/aws-lambda-apim-sdk:1.0.0
@@ -73,14 +82,17 @@ docker run --rm \
 echo ""
 echo "🔍 Checking build result..."
 
-if [ -f "build/libs/aws-lambda-apim-sdk-1.0.1.jar" ]; then
+# Dynamic JAR detection
+JAR_FILE=$(find build/libs -name "aws-lambda-apim-sdk-*.jar" | head -1)
+
+if [ -n "$JAR_FILE" ]; then
     echo "✅ JAR created successfully!"
-    echo "📁 File: build/libs/aws-lambda-apim-sdk-1.0.1.jar"
-    echo "📏 Size: $(du -h build/libs/aws-lambda-apim-sdk-1.0.1.jar | cut -f1)"
+    echo "📁 File: $JAR_FILE"
+    echo "📏 Size: $(du -h "$JAR_FILE" | cut -f1)"
     
     echo ""
     echo "📋 JAR contents:"
-    jar -tf build/libs/aws-lambda-apim-sdk-1.0.1.jar | head -20
+    jar -tf "$JAR_FILE" | head -20
     
     echo ""
     echo "🎉 Build completed successfully!"

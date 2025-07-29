@@ -144,16 +144,31 @@ dependencies {
 // Task para instalação no Linux
 task installLinux(type: Exec) {
     group = 'Installation'
-    description = 'Installs the AWS Lambda filter on Linux'
+    description = 'Installs the filter on Linux (JAR + YAML)'
     
     dependsOn build
     
-    commandLine 'bash', 'scripts/linux/install-filter.sh'
-    
     doFirst {
-        println "🚀 Installing AWS Lambda filter on Linux..."
-        println "📁 JAR: build/libs/aws-lambda-apim-sdk-1.0.1.jar"
-        println "📁 Gateway: ${axway_base}"
+        println "🚀 Installing Invoke Lambda Function Filter on Linux..."
+        println "📁 JAR: build/libs/aws-lambda-apim-sdk-${version}.jar"
+        println "📁 YAML: src/main/resources/yaml/"
+        println "📁 FED: src/main/resources/fed/"
+    }
+    
+    doLast {
+        // Execute the Linux installation script
+        exec {
+            commandLine 'bash', 'scripts/linux/install-filter.sh'
+        }
+        
+        println "✅ Installation completed!"
+        println ""
+        println "📋 Next steps:"
+        println "1. Restart the API Gateway"
+        println "2. Open Policy Studio"
+        println "3. Go to Window > Preferences > Runtime Dependencies"
+        println "4. Add the JAR: aws-lambda-apim-sdk-${version}.jar"
+        println "5. Restart Policy Studio with -clean"
     }
 }
 
@@ -382,12 +397,12 @@ task buildJarLinux {
     
     doFirst {
         println "🔨 Building Invoke Lambda Function Filter JAR..."
-        println "📁 JAR: build/libs/aws-lambda-apim-sdk-1.0.1.jar"
+        println "📁 JAR: build/libs/aws-lambda-apim-sdk-${version}.jar"
         println "⚠️  Note: This task should be run only on Linux"
     }
     
     doLast {
-        def jarFile = new File("build/libs/aws-lambda-apim-sdk-1.0.1.jar")
+        def jarFile = new File("build/libs/aws-lambda-apim-sdk-${version}.jar")
         if (jarFile.exists()) {
             println "✅ JAR created successfully: ${jarFile.absolutePath}"
             println "📋 For Windows: Copy this JAR to the Windows environment"
