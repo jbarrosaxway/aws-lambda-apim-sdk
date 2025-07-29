@@ -148,6 +148,20 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		}
 	}
 
+	/**
+	 * Gets the payload following SQS pattern exactly
+	 */
+	private String getPayload(Message m) {
+		Body b = (Body)m.get("content.body");
+		String payload = this.bodyToString.substitute(m);
+		
+		if (payload == null || payload.trim().isEmpty()) {
+			payload = "{}";
+		}
+		
+		return payload;
+	}
+
 	@Override
 	public boolean invoke(Circuit c, Message m) throws CircuitAbortException {
 		try {
@@ -174,9 +188,8 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 				memorySizeValue = 128; // Default 128 MB
 			}
 			
-			// Get body content (following SQS pattern exactly)
-			Body b = (Body)m.get("content.body");
-			String body = this.bodyToString.substitute(m);
+			// Get body content using getPayload method (following SQS pattern exactly)
+			String body = getPayload(m);
 			
 			if (body == null || body.trim().isEmpty()) {
 				body = "{}";
