@@ -379,15 +379,6 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		Trace.info("AWS_ROLE_ARN: " + System.getenv("AWS_ROLE_ARN"));
 		Trace.info("AWS_REGION: " + System.getenv("AWS_REGION"));
 		
-		// Test current credentials
-		try {
-			AWSCredentials currentCredentials = lambdaClientBuilder.build().getCredentials();
-			Trace.info("Current Access Key: " + currentCredentials.getAWSAccessKeyId());
-			Trace.info("Current Secret Key: " + (currentCredentials.getAWSSecretKey() != null ? "***" : "null"));
-		} catch (Exception e) {
-			Trace.error("Error getting current credentials: " + e.getMessage());
-		}
-		
 		Exception lastException = null;
 		
 		// Get maxRetries from clientConfiguration (default 3)
@@ -398,17 +389,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				Trace.info("Attempt " + attempt + " of " + maxRetriesValue);
 				
 				// Create Lambda client with region (following S3 pattern)
-				Trace.info("Creating Lambda client for region: " + regionValue);
 				AWSLambda lambdaClient = lambdaClientBuilder.withRegion(regionValue).build();
-				
-				// Debug the actual client credentials
-				try {
-					AWSCredentials clientCredentials = lambdaClient.getCredentials();
-					Trace.info("Lambda Client Access Key: " + clientCredentials.getAWSAccessKeyId());
-					Trace.info("Lambda Client Secret Key: " + (clientCredentials.getAWSSecretKey() != null ? "***" : "null"));
-				} catch (Exception e) {
-					Trace.error("Error getting Lambda client credentials: " + e.getMessage());
-				}
 				
 				// Create request
 				InvokeRequest invokeRequest = new InvokeRequest()
