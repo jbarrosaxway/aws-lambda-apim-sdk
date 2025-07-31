@@ -373,6 +373,21 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		Trace.info("Using IAM Role: " + useIAMRoleValue);
 		Trace.info("Memory Size: " + memorySizeValue + " MB");
 		
+		// Debug IRSA during actual invocation
+		Trace.info("=== IRSA Debug During Invoke ===");
+		Trace.info("AWS_WEB_IDENTITY_TOKEN_FILE: " + System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"));
+		Trace.info("AWS_ROLE_ARN: " + System.getenv("AWS_ROLE_ARN"));
+		Trace.info("AWS_REGION: " + System.getenv("AWS_REGION"));
+		
+		// Test current credentials
+		try {
+			AWSCredentials currentCredentials = lambdaClientBuilder.build().getCredentials();
+			Trace.info("Current Access Key: " + currentCredentials.getAWSAccessKeyId());
+			Trace.info("Current Secret Key: " + (currentCredentials.getAWSSecretKey() != null ? "***" : "null"));
+		} catch (Exception e) {
+			Trace.error("Error getting current credentials: " + e.getMessage());
+		}
+		
 		Exception lastException = null;
 		
 		// Get maxRetries from clientConfiguration (default 3)
@@ -383,7 +398,17 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				Trace.info("Attempt " + attempt + " of " + maxRetriesValue);
 				
 				// Create Lambda client with region (following S3 pattern)
+				Trace.info("Creating Lambda client for region: " + regionValue);
 				AWSLambda lambdaClient = lambdaClientBuilder.withRegion(regionValue).build();
+				
+				// Debug the actual client credentials
+				try {
+					AWSCredentials clientCredentials = lambdaClient.getCredentials();
+					Trace.info("Lambda Client Access Key: " + clientCredentials.getAWSAccessKeyId());
+					Trace.info("Lambda Client Secret Key: " + (clientCredentials.getAWSSecretKey() != null ? "***" : "null"));
+				} catch (Exception e) {
+					Trace.error("Error getting Lambda client credentials: " + e.getMessage());
+				}
 				
 				// Create request
 				InvokeRequest invokeRequest = new InvokeRequest()
@@ -407,6 +432,21 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			} catch (Exception e) {
 				lastException = e;
 				Trace.error("Attempt " + attempt + " failed: " + e.getMessage());
+				
+				// Debug the specific error for IRSA issues
+				if (e.getMessage().contains("AccessDeniedException")) {
+					Trace.error("=== Access Denied Debug ===");
+					Trace.error("Error message: " + e.getMessage());
+					
+					// Check if it's still using node group role
+					if (e.getMessage().contains("axway-first-ng-role")) {
+						Trace.error("❌ Still using node group role instead of ServiceAccount");
+						Trace.error("This indicates IRSA is not properly configured");
+					} else if (e.getMessage().contains("axway-lambda-role")) {
+						Trace.error("✅ Using ServiceAccount role but permission denied");
+						Trace.error("This indicates IRSA is working but role lacks permissions");
+					}
+				}
 				
 				// If not the last attempt, wait before retrying
 				if (attempt < maxRetriesValue) {
