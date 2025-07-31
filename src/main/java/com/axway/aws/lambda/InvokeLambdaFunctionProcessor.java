@@ -25,6 +25,18 @@ import com.vordel.es.EntityStoreException;
 import com.vordel.trace.Trace;
 import java.nio.ByteBuffer;
 
+/**
+ * AWS Lambda Function Invoker with optimized IAM Role support
+ * 
+ * IAM Role Configuration:
+ * - "iam" credential type: Uses DefaultAWSCredentialsProviderChain
+ *   - Automatically detects IRSA (IAM Roles for Service Accounts) tokens
+ *   - Falls back to EC2 Instance Profile if IRSA not available
+ *   - Priority: IRSA ServiceAccount > EC2 Instance Profile
+ * 
+ * - "file" credential type: Uses ProfileCredentialsProvider with specified file
+ * - "local" credential type: Uses AWSFactory for explicit credentials
+ */
 public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	
 	// Selectors for dynamic field resolution (following S3 pattern)
@@ -124,9 +136,11 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		Trace.info("Credential Type Value: " + credentialTypeValue);
 		
 		if ("iam".equals(credentialTypeValue)) {
-			// Use IAM Role (EC2 Instance Profile or ECS Task Role)
-			Trace.info("Using IAM Role credentials (Instance Profile/Task Role)");
-			return new EC2ContainerCredentialsProviderWrapper();
+			// Use IAM Role (IRSA - ServiceAccount or EC2 Instance Profile)
+			Trace.info("Using IAM Role credentials (IRSA ServiceAccount or Instance Profile)");
+			// DefaultAWSCredentialsProviderChain automatically detects IRSA tokens
+			// and falls back to EC2 instance profile if not available
+			return new DefaultAWSCredentialsProviderChain();
 		} else if ("file".equals(credentialTypeValue)) {
 			// Use credentials file
 			Trace.info("Credentials Type is 'file', checking credentialsFilePath...");
