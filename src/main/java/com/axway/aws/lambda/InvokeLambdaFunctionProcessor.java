@@ -151,7 +151,33 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			String webIdentityTokenFile = System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE");
 			String roleArn = System.getenv("AWS_ROLE_ARN");
 			
-			if (webIdentityTokenFile != null && roleArn != null) {
+			// Validate token file exists and is readable
+			boolean tokenFileValid = false;
+			if (webIdentityTokenFile != null) {
+				try {
+					java.io.File tokenFile = new java.io.File(webIdentityTokenFile);
+					tokenFileValid = tokenFile.exists() && tokenFile.canRead();
+					Trace.info("Token file exists: " + tokenFile.exists());
+					Trace.info("Token file readable: " + tokenFile.canRead());
+					Trace.info("Token file size: " + tokenFile.length() + " bytes");
+					
+					// Try to read first few characters of token (for debugging)
+					if (tokenFile.exists() && tokenFile.canRead() && tokenFile.length() > 0) {
+						try {
+							java.nio.file.Path path = tokenFile.toPath();
+							String tokenContent = new String(java.nio.file.Files.readAllBytes(path));
+							Trace.info("Token content length: " + tokenContent.length());
+							Trace.info("Token starts with: " + (tokenContent.length() > 20 ? tokenContent.substring(0, 20) + "..." : tokenContent));
+						} catch (Exception tokenReadError) {
+							Trace.error("Error reading token content: " + tokenReadError.getMessage());
+						}
+					}
+				} catch (Exception e) {
+					Trace.error("Error checking token file: " + e.getMessage());
+				}
+			}
+			
+			if (webIdentityTokenFile != null && roleArn != null && tokenFileValid) {
 				// IRSA is available - use WebIdentityTokenCredentialsProvider
 				Trace.info("✅ IRSA detected - using WebIdentityTokenCredentialsProvider");
 				Trace.info("Token File: " + webIdentityTokenFile);
@@ -175,6 +201,18 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 				Trace.info("⚠️ IRSA not available - using DefaultAWSCredentialsProviderChain (EC2 Instance Profile)");
 				Trace.info("Token File: " + webIdentityTokenFile);
 				Trace.info("Role ARN: " + roleArn);
+				Trace.info("Token File Valid: " + tokenFileValid);
+				
+				// Debug why IRSA is not available
+				if (webIdentityTokenFile == null) {
+					Trace.error("❌ AWS_WEB_IDENTITY_TOKEN_FILE environment variable is null");
+				}
+				if (roleArn == null) {
+					Trace.error("❌ AWS_ROLE_ARN environment variable is null");
+				}
+				if (webIdentityTokenFile != null && !tokenFileValid) {
+					Trace.error("❌ Token file is not valid (doesn't exist or not readable)");
+				}
 				try {
 					AWSCredentials credentials = new DefaultAWSCredentialsProviderChain().getCredentials();
 					Trace.info("EC2 Access Key: " + credentials.getAWSAccessKeyId());
