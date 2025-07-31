@@ -139,6 +139,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		if ("iam".equals(credentialTypeValue)) {
 			// Use IAM Role (IRSA - ServiceAccount or EC2 Instance Profile)
 			Trace.info("Using IAM Role credentials (IRSA ServiceAccount or Instance Profile)");
+			Trace.info("Credential Type Value: " + credentialTypeValue);
 			
 			// Debug IRSA configuration
 			Trace.info("=== IRSA Debug ===");
@@ -153,23 +154,31 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			if (webIdentityTokenFile != null && roleArn != null) {
 				// IRSA is available - use WebIdentityTokenCredentialsProvider
 				Trace.info("✅ IRSA detected - using WebIdentityTokenCredentialsProvider");
+				Trace.info("Token File: " + webIdentityTokenFile);
+				Trace.info("Role ARN: " + roleArn);
+				
 				try {
-					AWSCredentials credentials = new WebIdentityTokenCredentialsProvider().getCredentials();
-					Trace.info("Access Key: " + credentials.getAWSAccessKeyId());
-					Trace.info("Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
-					return new WebIdentityTokenCredentialsProvider();
+					WebIdentityTokenCredentialsProvider irsaProvider = new WebIdentityTokenCredentialsProvider();
+					AWSCredentials credentials = irsaProvider.getCredentials();
+					Trace.info("IRSA Access Key: " + credentials.getAWSAccessKeyId());
+					Trace.info("IRSA Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
+					Trace.info("✅ IRSA credentials obtained successfully");
+					return irsaProvider;
 				} catch (Exception e) {
-					Trace.error("Error getting IRSA credentials: " + e.getMessage());
+					Trace.error("❌ Error getting IRSA credentials: " + e.getMessage());
+					Trace.error("Stack trace: " + e.toString());
 					Trace.info("Falling back to DefaultAWSCredentialsProviderChain");
 					return new DefaultAWSCredentialsProviderChain();
 				}
 			} else {
 				// IRSA not available - fallback to EC2 Instance Profile
 				Trace.info("⚠️ IRSA not available - using DefaultAWSCredentialsProviderChain (EC2 Instance Profile)");
+				Trace.info("Token File: " + webIdentityTokenFile);
+				Trace.info("Role ARN: " + roleArn);
 				try {
 					AWSCredentials credentials = new DefaultAWSCredentialsProviderChain().getCredentials();
-					Trace.info("Access Key: " + credentials.getAWSAccessKeyId());
-					Trace.info("Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
+					Trace.info("EC2 Access Key: " + credentials.getAWSAccessKeyId());
+					Trace.info("EC2 Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
 				} catch (Exception e) {
 					Trace.error("Error getting credentials: " + e.getMessage());
 				}
@@ -178,6 +187,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		} else if ("file".equals(credentialTypeValue)) {
 			// Use credentials file
 			Trace.info("Credentials Type is 'file', checking credentialsFilePath...");
+			Trace.info("Credential Type Value: " + credentialTypeValue);
 			String filePath = credentialsFilePath.getLiteral();
 			Trace.info("File Path: " + filePath);
 			Trace.info("File Path is null: " + (filePath == null));
@@ -199,6 +209,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		} else {
 			// Use explicit credentials via AWSFactory (following S3 pattern)
 			Trace.info("Using explicit AWS credentials via AWSFactory");
+			Trace.info("Credential Type Value: " + credentialTypeValue);
 			try {
 				AWSCredentials awsCredentials = AWSFactory.getCredentials(ctx, entity);
 				Trace.info("AWSFactory.getCredentials() successful");
