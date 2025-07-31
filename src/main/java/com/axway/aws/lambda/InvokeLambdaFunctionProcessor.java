@@ -9,6 +9,7 @@ import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.auth.EC2ContainerCredentialsProviderWrapper;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
+import com.amazonaws.auth.WebIdentityTokenCredentialsProvider;
 import com.amazonaws.services.lambda.AWSLambda;
 import com.amazonaws.services.lambda.AWSLambdaClientBuilder;
 import com.amazonaws.services.lambda.model.InvokeRequest;
@@ -29,9 +30,9 @@ import java.nio.ByteBuffer;
  * AWS Lambda Function Invoker with optimized IAM Role support
  * 
  * IAM Role Configuration:
- * - "iam" credential type: Uses DefaultAWSCredentialsProviderChain
- *   - Automatically detects IRSA (IAM Roles for Service Accounts) tokens
- *   - Falls back to EC2 Instance Profile if IRSA not available
+ * - "iam" credential type: Uses WebIdentityTokenCredentialsProvider for IRSA
+ *   - Detects IRSA (IAM Roles for Service Accounts) via environment variables
+ *   - Falls back to DefaultAWSCredentialsProviderChain (EC2 Instance Profile) if IRSA not available
  *   - Priority: IRSA ServiceAccount > EC2 Instance Profile
  * 
  * - "file" credential type: Uses ProfileCredentialsProvider with specified file
@@ -138,9 +139,42 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		if ("iam".equals(credentialTypeValue)) {
 			// Use IAM Role (IRSA - ServiceAccount or EC2 Instance Profile)
 			Trace.info("Using IAM Role credentials (IRSA ServiceAccount or Instance Profile)");
-			// DefaultAWSCredentialsProviderChain automatically detects IRSA tokens
-			// and falls back to EC2 instance profile if not available
-			return new DefaultAWSCredentialsProviderChain();
+			
+			// Debug IRSA configuration
+			Trace.info("=== IRSA Debug ===");
+			Trace.info("AWS_WEB_IDENTITY_TOKEN_FILE: " + System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE"));
+			Trace.info("AWS_ROLE_ARN: " + System.getenv("AWS_ROLE_ARN"));
+			Trace.info("AWS_REGION: " + System.getenv("AWS_REGION"));
+			
+			// Check if IRSA is available
+			String webIdentityTokenFile = System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE");
+			String roleArn = System.getenv("AWS_ROLE_ARN");
+			
+			if (webIdentityTokenFile != null && roleArn != null) {
+				// IRSA is available - use WebIdentityTokenCredentialsProvider
+				Trace.info("✅ IRSA detected - using WebIdentityTokenCredentialsProvider");
+				try {
+					AWSCredentials credentials = new WebIdentityTokenCredentialsProvider().getCredentials();
+					Trace.info("Access Key: " + credentials.getAWSAccessKeyId());
+					Trace.info("Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
+					return new WebIdentityTokenCredentialsProvider();
+				} catch (Exception e) {
+					Trace.error("Error getting IRSA credentials: " + e.getMessage());
+					Trace.info("Falling back to DefaultAWSCredentialsProviderChain");
+					return new DefaultAWSCredentialsProviderChain();
+				}
+			} else {
+				// IRSA not available - fallback to EC2 Instance Profile
+				Trace.info("⚠️ IRSA not available - using DefaultAWSCredentialsProviderChain (EC2 Instance Profile)");
+				try {
+					AWSCredentials credentials = new DefaultAWSCredentialsProviderChain().getCredentials();
+					Trace.info("Access Key: " + credentials.getAWSAccessKeyId());
+					Trace.info("Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
+				} catch (Exception e) {
+					Trace.error("Error getting credentials: " + e.getMessage());
+				}
+				return new DefaultAWSCredentialsProviderChain();
+			}
 		} else if ("file".equals(credentialTypeValue)) {
 			// Use credentials file
 			Trace.info("Credentials Type is 'file', checking credentialsFilePath...");
