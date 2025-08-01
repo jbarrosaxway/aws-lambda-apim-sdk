@@ -59,6 +59,13 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	
 	// Content body selector
 	private Selector<String> contentBody = new Selector<>("${content.body}", String.class);
+	
+	// Configurable payload fields
+	protected Selector<String> payloadMethodField;
+	protected Selector<String> payloadHeadersField;
+	protected Selector<String> payloadBodyField;
+	protected Selector<String> payloadUriField;
+	protected Selector<String> payloadQueryStringField;
 
 	public InvokeLambdaFunctionProcessor() {
 	}
@@ -80,6 +87,13 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		this.awsCredential = new Selector(entity.getStringValue("awsCredential"), String.class);
 		this.clientConfiguration = new Selector(entity.getStringValue("clientConfiguration"), String.class);
 		this.credentialsFilePath = new Selector(entity.getStringValue("credentialsFilePath") != null ? entity.getStringValue("credentialsFilePath") : "", String.class);
+		
+		// Initialize configurable payload fields
+		this.payloadMethodField = new Selector(entity.getStringValue("payloadMethodField"), String.class);
+		this.payloadHeadersField = new Selector(entity.getStringValue("payloadHeadersField"), String.class);
+		this.payloadBodyField = new Selector(entity.getStringValue("payloadBodyField"), String.class);
+		this.payloadUriField = new Selector(entity.getStringValue("payloadUriField"), String.class);
+		this.payloadQueryStringField = new Selector(entity.getStringValue("payloadQueryStringField"), String.class);
 		
 		// Get client configuration (following S3 pattern exactly)
 		Entity clientConfig = ctx.getEntity(entity.getReferenceValue("clientConfiguration"));
@@ -341,9 +355,14 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			memorySizeValue = 128; // Default 128 MB
 		}
 		
-		String body = contentBody.substitute(msg);
-		if (body == null || body.trim().isEmpty()) {
-			body = "{}";
+		// Build payload based on configuration
+		String payload = buildConfigurablePayload(msg);
+		if (payload == null || payload.trim().isEmpty()) {
+			// Fallback to original body if no configuration
+			payload = contentBody.substitute(msg);
+			if (payload == null || payload.trim().isEmpty()) {
+				payload = "{}";
+			}
 		}
 		
 		Trace.info("Invoking Lambda function with retry...");
@@ -371,7 +390,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				// Create request
 				InvokeRequest invokeRequest = new InvokeRequest()
 					.withFunctionName(functionNameValue)
-					.withPayload(ByteBuffer.wrap(body.getBytes()))
+					.withPayload(ByteBuffer.wrap(payload.getBytes()))
 					.withInvocationType(invocationTypeValue)
 					.withLogType(logTypeValue);
 				
@@ -474,6 +493,101 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			Trace.error("Error processing Lambda response: " + e.getMessage(), e);
 			msg.put("aws.lambda.error", "Error processing response: " + e.getMessage());
 			return false;
+		}
+	}
+	
+	/**
+	 * Builds configurable Lambda payload based on field configuration
+	 * Only includes fields that have non-empty field names configured
+	 */
+	private String buildConfigurablePayload(Message msg) {
+		try {
+			java.util.Map<String, Object> payload = new java.util.HashMap<>();
+			
+			// Get field names from configuration
+			String methodFieldName = payloadMethodField != null ? payloadMethodField.substitute(msg) : null;
+			String headersFieldName = payloadHeadersField != null ? payloadHeadersField.substitute(msg) : null;
+			String bodyFieldName = payloadBodyField != null ? payloadBodyField.substitute(msg) : null;
+			String uriFieldName = payloadUriField != null ? payloadUriField.substitute(msg) : null;
+			String queryStringFieldName = payloadQueryStringField != null ? payloadQueryStringField.substitute(msg) : null;
+			
+			// Add request_method if configured
+			if (methodFieldName != null && !methodFieldName.trim().isEmpty()) {
+				String method = msg.get("http.request.verb") != null ? msg.get("http.request.verb").toString() : "GET";
+				payload.put(methodFieldName.trim(), method);
+			}
+			
+			// Add request_headers if configured
+			if (headersFieldName != null && !headersFieldName.trim().isEmpty()) {
+				java.util.Map<String, String> headerMap = extractHeaders(msg);
+				payload.put(headersFieldName.trim(), headerMap);
+			}
+			
+			// Add request_body if configured
+			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
+				String body = extractBody(msg);
+				payload.put(bodyFieldName.trim(), body);
+			}
+			
+			// Add request_uri if configured
+			if (uriFieldName != null && !uriFieldName.trim().isEmpty()) {
+				String uri = msg.get("http.request.uri") != null ? msg.get("http.request.uri").toString() : "/";
+				payload.put(uriFieldName.trim(), uri);
+			}
+			
+			// Add request_querystring if configured
+			if (queryStringFieldName != null && !queryStringFieldName.trim().isEmpty()) {
+				String queryString = msg.get("http.request.querystring") != null ? msg.get("http.request.querystring").toString() : "";
+				payload.put(queryStringFieldName.trim(), queryString);
+			}
+			
+			// Convert to JSON
+			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+			String payloadJson = mapper.writeValueAsString(payload);
+			
+			Trace.debug("Configurable payload built with " + payload.size() + " fields: " + payloadJson);
+			return payloadJson;
+			
+		} catch (Exception e) {
+			Trace.error("Error building configurable payload: " + e.getMessage(), e);
+			return "{}";
+		}
+	}
+	
+	/**
+	 * Extracts headers from message and converts to Map
+	 */
+	private java.util.Map<String, String> extractHeaders(Message msg) {
+		java.util.Map<String, String> headerMap = new java.util.HashMap<>();
+		try {
+			Object headersObj = msg.get("http.headers");
+			if (headersObj instanceof com.vordel.mime.HeaderSet) {
+				com.vordel.mime.HeaderSet headers = (com.vordel.mime.HeaderSet) headersObj;
+				java.util.Iterator<String> nameIterator = headers.getHeaderNames();
+				while (nameIterator.hasNext()) {
+					String headerName = nameIterator.next();
+					String headerValue = headers.getHeader(headerName);
+					if (headerValue != null) {
+						headerMap.put(headerName.toLowerCase(), headerValue);
+					}
+				}
+			}
+		} catch (Exception e) {
+			Trace.error("Error extracting headers: " + e.getMessage(), e);
+		}
+		return headerMap;
+	}
+	
+	/**
+	 * Extracts body from message as string
+	 */
+	private String extractBody(Message msg) {
+		try {
+			String body = contentBody.substitute(msg);
+			return body != null ? body : "";
+		} catch (Exception e) {
+			Trace.error("Error extracting body: " + e.getMessage(), e);
+			return "";
 		}
 	}
 }
