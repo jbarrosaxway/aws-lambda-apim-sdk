@@ -5,7 +5,14 @@ filter classname. "functionName" - The name of the AWS Lambda function to invoke
 	The type of invocation (RequestResponse, Event, DryRun) "logType" - The type 
 	of logging (None, Tail) "qualifier" - The version or alias of the function
 	"maxRetries" - Maximum number of retry attempts "retryDelay" - Delay between 
-	retry attempts in milliseconds -->
+	retry attempts in milliseconds
+	Configurable Payload Fields (optional):
+	"payloadMethodField" - Field name for HTTP method in payload (e.g. "request_method")
+	"payloadHeadersField" - Field name for HTTP headers in payload (e.g. "request_headers") 
+	"payloadBodyField" - Field name for request body in payload (e.g. "request_body")
+	"payloadUriField" - Field name for request URI in payload (e.g. "request_uri")
+	"payloadQueryStringField" - Field name for query string in payload (e.g. "request_querystring")
+	Note: If field name is empty, that field will not be included in the payload -->
 
 <entityStoreData>
 	<entityType name="InvokeLambdaFunctionFilter" extends="AWSFilter">
@@ -23,6 +30,11 @@ filter classname. "functionName" - The name of the AWS Lambda function to invoke
 		<field name="awsCredential" type="^ApiKeyProfile" cardinality="1" />
 		<field name="clientConfiguration" type="^AWSClientConfiguration" cardinality="1" />
 		<field name="credentialsFilePath" type="string" cardinality="1" />
+		<field name="payloadMethodField" type="string" cardinality="1" />
+		<field name="payloadHeadersField" type="string" cardinality="1" />
+		<field name="payloadBodyField" type="string" cardinality="1" />
+		<field name="payloadUriField" type="string" cardinality="1" />
+		<field name="payloadQueryStringField" type="string" cardinality="1" />
 	</entityType>
 
 	

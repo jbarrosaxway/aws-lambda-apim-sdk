@@ -61,6 +61,24 @@
 						displayName="AWS_LAMBDA_RETRY_DELAY_NAME" description="AWS_LAMBDA_RETRY_DELAY_DESCRIPTION" />
 				</panel>
 			</tab>
+			<tab label="AWS_LAMBDA_TAB_PAYLOAD_LABEL">
+				<panel columns="2">
+					<TextAttribute field="payloadMethodField" label="AWS_LAMBDA_PAYLOAD_METHOD_FIELD_LABEL"
+						displayName="AWS_LAMBDA_PAYLOAD_METHOD_FIELD_NAME" description="AWS_LAMBDA_PAYLOAD_METHOD_FIELD_DESCRIPTION" />
+
+					<TextAttribute field="payloadHeadersField" label="AWS_LAMBDA_PAYLOAD_HEADERS_FIELD_LABEL"
+						displayName="AWS_LAMBDA_PAYLOAD_HEADERS_FIELD_NAME" description="AWS_LAMBDA_PAYLOAD_HEADERS_FIELD_DESCRIPTION" />
+
+					<TextAttribute field="payloadBodyField" label="AWS_LAMBDA_PAYLOAD_BODY_FIELD_LABEL"
+						displayName="AWS_LAMBDA_PAYLOAD_BODY_FIELD_NAME" description="AWS_LAMBDA_PAYLOAD_BODY_FIELD_DESCRIPTION" />
+
+					<TextAttribute field="payloadUriField" label="AWS_LAMBDA_PAYLOAD_URI_FIELD_LABEL"
+						displayName="AWS_LAMBDA_PAYLOAD_URI_FIELD_NAME" description="AWS_LAMBDA_PAYLOAD_URI_FIELD_DESCRIPTION" />
+
+					<TextAttribute field="payloadQueryStringField" label="AWS_LAMBDA_PAYLOAD_QUERYSTRING_FIELD_LABEL"
+						displayName="AWS_LAMBDA_PAYLOAD_QUERYSTRING_FIELD_NAME" description="AWS_LAMBDA_PAYLOAD_QUERYSTRING_FIELD_DESCRIPTION" />
+				</panel>
+			</tab>
 		</tabFolder>
 	</panel>
 </ui>
