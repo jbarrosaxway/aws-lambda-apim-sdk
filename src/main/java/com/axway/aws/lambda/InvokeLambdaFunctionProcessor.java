@@ -30,10 +30,10 @@ import java.nio.ByteBuffer;
  * AWS Lambda Function Invoker with optimized IAM Role support
  * 
  * IAM Role Configuration:
- * - "iam" credential type: Always uses WebIdentityTokenCredentialsProvider first
- *   - Automatically detects IRSA (IAM Roles for Service Accounts) or falls back to EC2 Instance Profile
- *   - AWS SDK handles environment variables (AWS_WEB_IDENTITY_TOKEN_FILE, AWS_ROLE_ARN) internally
- *   - Priority: IRSA ServiceAccount > EC2 Instance Profile (handled by AWS SDK)
+ * - "iam" credential type: Uses WebIdentityTokenCredentialsProvider only
+ *   - AWS SDK automatically handles IRSA (IAM Roles for Service Accounts) and EC2 Instance Profile
+ *   - Reads environment variables (AWS_WEB_IDENTITY_TOKEN_FILE, AWS_ROLE_ARN) internally
+ *   - Supports both ServiceAccount tokens and EC2 instance metadata
  * 
  * - "file" credential type: Uses ProfileCredentialsProvider with specified file
  * - "local" credential type: Uses AWSFactory for explicit credentials
@@ -137,8 +137,8 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		Trace.info("Credential Type Value: " + credentialTypeValue);
 		
 		if ("iam".equals(credentialTypeValue)) {
-			// Use IAM Role - always try WebIdentityTokenCredentialsProvider first
-			Trace.info("Using IAM Role credentials - trying WebIdentityTokenCredentialsProvider");
+			// Use IAM Role - WebIdentityTokenCredentialsProvider only
+			Trace.info("Using IAM Role credentials - WebIdentityTokenCredentialsProvider");
 			Trace.info("Credential Type Value: " + credentialTypeValue);
 			
 			// Debug IRSA configuration
@@ -147,32 +147,9 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			Trace.info("AWS_ROLE_ARN: " + System.getenv("AWS_ROLE_ARN"));
 			Trace.info("AWS_REGION: " + System.getenv("AWS_REGION"));
 			
-			// Always try WebIdentityTokenCredentialsProvider first for IAM role
-			try {
-				Trace.info("✅ Using WebIdentityTokenCredentialsProvider for IAM role");
-				WebIdentityTokenCredentialsProvider irsaProvider = new WebIdentityTokenCredentialsProvider();
-				
-				// Test credentials to see if they work
-				AWSCredentials credentials = irsaProvider.getCredentials();
-				Trace.info("IRSA Access Key: " + credentials.getAWSAccessKeyId());
-				Trace.info("IRSA Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
-				Trace.info("✅ WebIdentityTokenCredentialsProvider working successfully");
-				return irsaProvider;
-				
-			} catch (Exception e) {
-				Trace.error("❌ WebIdentityTokenCredentialsProvider failed: " + e.getMessage());
-				Trace.error("Stack trace: " + e.toString());
-				Trace.info("Falling back to DefaultAWSCredentialsProviderChain (EC2 Instance Profile)");
-				
-				try {
-					AWSCredentials credentials = new DefaultAWSCredentialsProviderChain().getCredentials();
-					Trace.info("EC2 Access Key: " + credentials.getAWSAccessKeyId());
-					Trace.info("EC2 Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
-				} catch (Exception fallbackError) {
-					Trace.error("Error getting fallback credentials: " + fallbackError.getMessage());
-				}
-				return new DefaultAWSCredentialsProviderChain();
-			}
+			// Use WebIdentityTokenCredentialsProvider for IAM role
+			Trace.info("✅ Using WebIdentityTokenCredentialsProvider for IAM role");
+			return new WebIdentityTokenCredentialsProvider();
 		} else if ("file".equals(credentialTypeValue)) {
 			// Use credentials file
 			Trace.info("Credentials Type is 'file', checking credentialsFilePath...");
