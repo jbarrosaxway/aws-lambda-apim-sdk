@@ -107,16 +107,26 @@ dependencies {
                 println "⚠️  AWS SDK Lambda not found in Axway, adding external: $lambdaVersion"
                 implementation group: 'com.amazonaws', name: 'aws-java-sdk-lambda', version: lambdaVersion
             }
+            
+            // Check if AWS SDK STS is available (required for WebIdentityTokenCredentialsProvider)
+            def awsStsJar = awsSdkModulesJars.files.find { it.name.contains('sts') }
+            if (!awsStsJar) {
+                def stsVersion = detectedVersion ?: fallbackAwsSdkVersion
+                println "⚠️  AWS SDK STS not found in Axway, adding external: $stsVersion"
+                implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: stsVersion
+            }
         } else {
             println "⚠️  AWS SDK not found in Axway, using fallback: $fallbackAwsSdkVersion"
             implementation group: 'com.amazonaws', name: 'aws-java-sdk-lambda', version: fallbackAwsSdkVersion
             implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: fallbackAwsSdkVersion
+            implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: fallbackAwsSdkVersion
         }
     } else {
         // Use external AWS SDK (fallback)
         println "🔧 Using external AWS SDK: $fallbackAwsSdkVersion"
         implementation group: 'com.amazonaws', name: 'aws-java-sdk-lambda', version: fallbackAwsSdkVersion
         implementation group: 'com.amazonaws', name: 'aws-java-sdk-core', version: fallbackAwsSdkVersion
+        implementation group: 'com.amazonaws', name: 'aws-java-sdk-sts', version: fallbackAwsSdkVersion
     }
     
     // Axway API Gateway libs
