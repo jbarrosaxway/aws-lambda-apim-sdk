@@ -30,10 +30,10 @@ import java.nio.ByteBuffer;
  * AWS Lambda Function Invoker with optimized IAM Role support
  * 
  * IAM Role Configuration:
- * - "iam" credential type: Uses WebIdentityTokenCredentialsProvider for IRSA
- *   - Detects IRSA (IAM Roles for Service Accounts) via environment variables
- *   - Falls back to DefaultAWSCredentialsProviderChain (EC2 Instance Profile) if IRSA not available
- *   - Priority: IRSA ServiceAccount > EC2 Instance Profile
+ * - "iam" credential type: Always uses WebIdentityTokenCredentialsProvider first
+ *   - Automatically detects IRSA (IAM Roles for Service Accounts) or falls back to EC2 Instance Profile
+ *   - AWS SDK handles environment variables (AWS_WEB_IDENTITY_TOKEN_FILE, AWS_ROLE_ARN) internally
+ *   - Priority: IRSA ServiceAccount > EC2 Instance Profile (handled by AWS SDK)
  * 
  * - "file" credential type: Uses ProfileCredentialsProvider with specified file
  * - "local" credential type: Uses AWSFactory for explicit credentials
@@ -137,8 +137,8 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		Trace.info("Credential Type Value: " + credentialTypeValue);
 		
 		if ("iam".equals(credentialTypeValue)) {
-			// Use IAM Role (IRSA - ServiceAccount or EC2 Instance Profile)
-			Trace.info("Using IAM Role credentials (IRSA ServiceAccount or Instance Profile)");
+			// Use IAM Role - always try WebIdentityTokenCredentialsProvider first
+			Trace.info("Using IAM Role credentials - trying WebIdentityTokenCredentialsProvider");
 			Trace.info("Credential Type Value: " + credentialTypeValue);
 			
 			// Debug IRSA configuration
@@ -147,78 +147,29 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 			Trace.info("AWS_ROLE_ARN: " + System.getenv("AWS_ROLE_ARN"));
 			Trace.info("AWS_REGION: " + System.getenv("AWS_REGION"));
 			
-			// Check if IRSA is available
-			String webIdentityTokenFile = System.getenv("AWS_WEB_IDENTITY_TOKEN_FILE");
-			String roleArn = System.getenv("AWS_ROLE_ARN");
-			
-			// Validate token file exists and is readable
-			boolean tokenFileValid = false;
-			if (webIdentityTokenFile != null) {
-				try {
-					java.io.File tokenFile = new java.io.File(webIdentityTokenFile);
-					tokenFileValid = tokenFile.exists() && tokenFile.canRead();
-					Trace.info("Token file exists: " + tokenFile.exists());
-					Trace.info("Token file readable: " + tokenFile.canRead());
-					Trace.info("Token file size: " + tokenFile.length() + " bytes");
-					
-					// Try to read first few characters of token (for debugging)
-					if (tokenFile.exists() && tokenFile.canRead() && tokenFile.length() > 0) {
-						try {
-							java.nio.file.Path path = tokenFile.toPath();
-							String tokenContent = new String(java.nio.file.Files.readAllBytes(path));
-							Trace.info("Token content length: " + tokenContent.length());
-							Trace.info("Token starts with: " + (tokenContent.length() > 20 ? tokenContent.substring(0, 20) + "..." : tokenContent));
-						} catch (Exception tokenReadError) {
-							Trace.error("Error reading token content: " + tokenReadError.getMessage());
-						}
-					}
-				} catch (Exception e) {
-					Trace.error("Error checking token file: " + e.getMessage());
-				}
-			}
-			
-			if (webIdentityTokenFile != null && roleArn != null && tokenFileValid) {
-				// IRSA is available - use WebIdentityTokenCredentialsProvider
-				Trace.info("✅ IRSA detected - using WebIdentityTokenCredentialsProvider");
-				Trace.info("Token File: " + webIdentityTokenFile);
-				Trace.info("Role ARN: " + roleArn);
+			// Always try WebIdentityTokenCredentialsProvider first for IAM role
+			try {
+				Trace.info("✅ Using WebIdentityTokenCredentialsProvider for IAM role");
+				WebIdentityTokenCredentialsProvider irsaProvider = new WebIdentityTokenCredentialsProvider();
 				
-				try {
-					WebIdentityTokenCredentialsProvider irsaProvider = new WebIdentityTokenCredentialsProvider();
-					AWSCredentials credentials = irsaProvider.getCredentials();
-					Trace.info("IRSA Access Key: " + credentials.getAWSAccessKeyId());
-					Trace.info("IRSA Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
-					Trace.info("✅ IRSA credentials obtained successfully");
-					return irsaProvider;
-				} catch (Exception e) {
-					Trace.error("❌ Error getting IRSA credentials: " + e.getMessage());
-					Trace.error("Stack trace: " + e.toString());
-					Trace.info("Falling back to DefaultAWSCredentialsProviderChain");
-					return new DefaultAWSCredentialsProviderChain();
-				}
-			} else {
-				// IRSA not available - fallback to EC2 Instance Profile
-				Trace.info("⚠️ IRSA not available - using DefaultAWSCredentialsProviderChain (EC2 Instance Profile)");
-				Trace.info("Token File: " + webIdentityTokenFile);
-				Trace.info("Role ARN: " + roleArn);
-				Trace.info("Token File Valid: " + tokenFileValid);
+				// Test credentials to see if they work
+				AWSCredentials credentials = irsaProvider.getCredentials();
+				Trace.info("IRSA Access Key: " + credentials.getAWSAccessKeyId());
+				Trace.info("IRSA Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
+				Trace.info("✅ WebIdentityTokenCredentialsProvider working successfully");
+				return irsaProvider;
 				
-				// Debug why IRSA is not available
-				if (webIdentityTokenFile == null) {
-					Trace.error("❌ AWS_WEB_IDENTITY_TOKEN_FILE environment variable is null");
-				}
-				if (roleArn == null) {
-					Trace.error("❌ AWS_ROLE_ARN environment variable is null");
-				}
-				if (webIdentityTokenFile != null && !tokenFileValid) {
-					Trace.error("❌ Token file is not valid (doesn't exist or not readable)");
-				}
+			} catch (Exception e) {
+				Trace.error("❌ WebIdentityTokenCredentialsProvider failed: " + e.getMessage());
+				Trace.error("Stack trace: " + e.toString());
+				Trace.info("Falling back to DefaultAWSCredentialsProviderChain (EC2 Instance Profile)");
+				
 				try {
 					AWSCredentials credentials = new DefaultAWSCredentialsProviderChain().getCredentials();
 					Trace.info("EC2 Access Key: " + credentials.getAWSAccessKeyId());
 					Trace.info("EC2 Secret Key: " + (credentials.getAWSSecretKey() != null ? "***" : "null"));
-				} catch (Exception e) {
-					Trace.error("Error getting credentials: " + e.getMessage());
+				} catch (Exception fallbackError) {
+					Trace.error("Error getting fallback credentials: " + fallbackError.getMessage());
 				}
 				return new DefaultAWSCredentialsProviderChain();
 			}
