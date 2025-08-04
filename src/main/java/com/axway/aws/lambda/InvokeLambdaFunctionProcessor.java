@@ -59,6 +59,13 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	
 	// Content body selector
 	private Selector<String> contentBody = new Selector<>("${content.body}", String.class);
+	
+	// Configurable payload fields
+	protected Selector<String> payloadMethodField;
+	protected Selector<String> payloadHeadersField;
+	protected Selector<String> payloadBodyField;
+	protected Selector<String> payloadUriField;
+	protected Selector<String> payloadQueryStringField;
 
 	public InvokeLambdaFunctionProcessor() {
 	}
@@ -80,6 +87,13 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		this.awsCredential = new Selector(entity.getStringValue("awsCredential"), String.class);
 		this.clientConfiguration = new Selector(entity.getStringValue("clientConfiguration"), String.class);
 		this.credentialsFilePath = new Selector(entity.getStringValue("credentialsFilePath") != null ? entity.getStringValue("credentialsFilePath") : "", String.class);
+		
+		// Initialize configurable payload fields
+		this.payloadMethodField = new Selector(entity.getStringValue("payloadMethodField"), String.class);
+		this.payloadHeadersField = new Selector(entity.getStringValue("payloadHeadersField"), String.class);
+		this.payloadBodyField = new Selector(entity.getStringValue("payloadBodyField"), String.class);
+		this.payloadUriField = new Selector(entity.getStringValue("payloadUriField"), String.class);
+		this.payloadQueryStringField = new Selector(entity.getStringValue("payloadQueryStringField"), String.class);
 		
 		// Get client configuration (following S3 pattern exactly)
 		Entity clientConfig = ctx.getEntity(entity.getReferenceValue("clientConfiguration"));
@@ -341,9 +355,14 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			memorySizeValue = 128; // Default 128 MB
 		}
 		
-		String body = contentBody.substitute(msg);
-		if (body == null || body.trim().isEmpty()) {
-			body = "{}";
+		// Build payload based on configuration
+		String payload = buildConfigurablePayload(msg);
+		if (payload == null || payload.trim().isEmpty()) {
+			// Fallback to original body if no configuration
+			payload = contentBody.substitute(msg);
+			if (payload == null || payload.trim().isEmpty()) {
+				payload = "{}";
+			}
 		}
 		
 		Trace.info("Invoking Lambda function with retry...");
@@ -371,7 +390,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				// Create request
 				InvokeRequest invokeRequest = new InvokeRequest()
 					.withFunctionName(functionNameValue)
-					.withPayload(ByteBuffer.wrap(body.getBytes()))
+					.withPayload(ByteBuffer.wrap(payload.getBytes()))
 					.withInvocationType(invocationTypeValue)
 					.withLogType(logTypeValue);
 				
@@ -476,4 +495,215 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			return false;
 		}
 	}
+	
+	/**
+	 * Builds configurable Lambda payload based on field configuration
+	 * Only includes fields that have non-empty field names configured
+	 */
+	private String buildConfigurablePayload(Message msg) {
+		try {
+			java.util.Map<String, Object> payload = new java.util.HashMap<>();
+			
+			// Get field names from configuration
+			String methodFieldName = payloadMethodField != null ? payloadMethodField.substitute(msg) : null;
+			String headersFieldName = payloadHeadersField != null ? payloadHeadersField.substitute(msg) : null;
+			String bodyFieldName = payloadBodyField != null ? payloadBodyField.substitute(msg) : null;
+			String uriFieldName = payloadUriField != null ? payloadUriField.substitute(msg) : null;
+			String queryStringFieldName = payloadQueryStringField != null ? payloadQueryStringField.substitute(msg) : null;
+			
+			// Add request_method if configured and not empty
+			if (methodFieldName != null && !methodFieldName.trim().isEmpty()) {
+				String method = msg.get("http.request.verb") != null ? msg.get("http.request.verb").toString() : null;
+				if (method != null && !method.trim().isEmpty()) {
+					payload.put(methodFieldName.trim(), method);
+				}
+			}
+			
+			// Add request_headers if configured and not empty
+			if (headersFieldName != null && !headersFieldName.trim().isEmpty()) {
+				java.util.Map<String, String> headerMap = extractHeaders(msg);
+				if (headerMap != null && !headerMap.isEmpty()) {
+					payload.put(headersFieldName.trim(), headerMap);
+				}
+			}
+			
+			// Add request_body if configured and not empty
+			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
+				String body = extractOriginalBody(msg);
+				if (body != null && !body.trim().isEmpty()) {
+					payload.put(bodyFieldName.trim(), body);
+				}
+			}
+			
+			// Add request_uri if configured and not empty
+			if (uriFieldName != null && !uriFieldName.trim().isEmpty()) {
+				String uri = msg.get("http.request.uri") != null ? msg.get("http.request.uri").toString() : null;
+				if (uri != null && !uri.trim().isEmpty()) {
+					payload.put(uriFieldName.trim(), uri);
+				}
+			}
+			
+			// Add request_querystring if configured and not empty
+			if (queryStringFieldName != null && !queryStringFieldName.trim().isEmpty()) {
+				String queryString = msg.get("http.request.querystring") != null ? msg.get("http.request.querystring").toString() : null;
+				if (queryString != null && !queryString.trim().isEmpty()) {
+					payload.put(queryStringFieldName.trim(), queryString);
+				}
+			}
+			
+			// Convert to JSON
+			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+			String payloadJson = mapper.writeValueAsString(payload);
+			
+			Trace.debug("Configurable payload built with " + payload.size() + " fields: " + payloadJson);
+			return payloadJson;
+			
+		} catch (Exception e) {
+			Trace.error("Error building configurable payload: " + e.getMessage(), e);
+			return "{}";
+		}
+	}
+	
+	/**
+	 * Extracts headers from message and converts to Map
+	 */
+	private java.util.Map<String, String> extractHeaders(Message msg) {
+		java.util.Map<String, String> headerMap = new java.util.HashMap<>();
+		try {
+			Object headersObj = msg.get("http.headers");
+			if (headersObj instanceof com.vordel.mime.HeaderSet) {
+				com.vordel.mime.HeaderSet headers = (com.vordel.mime.HeaderSet) headersObj;
+				java.util.Iterator<String> nameIterator = headers.getHeaderNames();
+				while (nameIterator.hasNext()) {
+					String headerName = nameIterator.next();
+					String headerValue = headers.getHeader(headerName);
+					if (headerValue != null) {
+						headerMap.put(headerName.toLowerCase(), headerValue);
+					}
+				}
+			}
+		} catch (Exception e) {
+			Trace.error("Error extracting headers: " + e.getMessage(), e);
+		}
+		return headerMap;
+	}
+	
+	/**
+	 * Extracts original request body from message as string (following TraceProcessor pattern)
+	 */
+	private String extractOriginalBody(Message msg) {
+		try {
+			Trace.debug("=== Starting ORIGINAL body extraction (TraceProcessor pattern) ===");
+			
+			// Follow the exact same pattern as TraceProcessor
+			Object bodyObj = msg.get("content.body");
+			Trace.debug("Body object: " + (bodyObj != null ? bodyObj.getClass().getName() : "null"));
+			Trace.debug("Body object toString: " + (bodyObj != null ? bodyObj.toString() : "null"));
+			
+			if (bodyObj != null && bodyObj.getClass().getName().contains("vordel.mime.Body")) {
+				Trace.debug("Found content.body: " + bodyObj.getClass().getName());
+				
+				java.io.ByteArrayOutputStream os = new java.io.ByteArrayOutputStream();
+				try {
+					// Use reflection to call write method (like TraceProcessor does)
+					java.lang.reflect.Method writeMethod = bodyObj.getClass().getMethod("write", 
+						java.io.OutputStream.class, int.class);
+					writeMethod.invoke(bodyObj, os, 0);
+					
+					String content = new String(os.toByteArray(), "UTF-8");
+					Trace.debug("✅ Body extracted (TraceProcessor pattern): " + content.substring(0, Math.min(100, content.length())));
+					
+					// Check if this looks like our own payload (recursive)
+					if (content != null && content.contains("request_body") && content.contains("request_headers")) {
+						Trace.debug("❌ Content contains recursive payload, trying alternative...");
+						
+						// Try to get the original request body before processing
+						Object originalBodyObj = msg.get("http.request.body");
+						if (originalBodyObj != null && originalBodyObj.getClass().getName().contains("vordel.mime.Body")) {
+							Trace.debug("Found http.request.body: " + originalBodyObj.getClass().getName());
+							
+							java.io.ByteArrayOutputStream originalOs = new java.io.ByteArrayOutputStream();
+							try {
+								java.lang.reflect.Method originalWriteMethod = originalBodyObj.getClass().getMethod("write", 
+									java.io.OutputStream.class, int.class);
+								originalWriteMethod.invoke(originalBodyObj, originalOs, 0);
+								
+								String originalContent = new String(originalOs.toByteArray(), "UTF-8");
+								Trace.debug("✅ Original body from http.request.body: " + originalContent.substring(0, Math.min(100, originalContent.length())));
+								return originalContent;
+							} catch (Exception e) {
+								Trace.debug("❌ Could not write original body: " + e.getMessage());
+							} finally {
+								originalOs.close();
+							}
+						}
+						
+						// If still recursive, return empty
+						Trace.debug("❌ Still recursive, returning empty string");
+						return "";
+					}
+					
+					return content;
+				} catch (Exception e) {
+					Trace.debug("❌ Could not extract body using TraceProcessor pattern: " + e.getMessage());
+				} finally {
+					os.close();
+				}
+			} else {
+				Trace.debug("❌ No content.body found or not a Body instance");
+				
+				// Try to find any body-related keys in the message
+				Trace.debug("Searching for other body keys...");
+				java.util.Set<String> keys = msg.keySet();
+				for (String key : keys) {
+					if (key.toLowerCase().contains("body")) {
+						Object value = msg.get(key);
+						Trace.debug("Found body-related key: " + key + " = " + 
+							(value != null ? value.getClass().getName() : "null"));
+					}
+				}
+				
+				// Try direct cast like TraceProcessor does
+				Trace.debug("Trying direct cast like TraceProcessor...");
+				try {
+					Object directBody = msg.get("content.body");
+					if (directBody != null) {
+						Trace.debug("Direct body object: " + directBody.getClass().getName());
+						
+						// Try to cast directly like TraceProcessor
+						java.lang.reflect.Method getHeadersMethod = directBody.getClass().getMethod("getHeaders");
+						Object headers = getHeadersMethod.invoke(directBody);
+						Trace.debug("Headers: " + (headers != null ? headers.getClass().getName() : "null"));
+						
+						java.io.ByteArrayOutputStream os = new java.io.ByteArrayOutputStream();
+						try {
+							// Write only body (skip headers)
+							java.lang.reflect.Method bodyWriteMethod = directBody.getClass().getMethod("write", 
+								java.io.OutputStream.class, int.class);
+							bodyWriteMethod.invoke(directBody, os, 0);
+							
+							String content = new String(os.toByteArray(), "UTF-8");
+							Trace.debug("✅ Body extracted (headers skipped): " + content.substring(0, Math.min(100, content.length())));
+							return content;
+						} catch (Exception e) {
+							Trace.debug("❌ Could not extract body with headers: " + e.getMessage());
+						} finally {
+							os.close();
+						}
+					}
+				} catch (Exception e) {
+					Trace.debug("❌ Could not try direct cast: " + e.getMessage());
+				}
+			}
+			
+			Trace.debug("❌ No original body content found, returning empty string");
+			return "";
+		} catch (Exception e) {
+			Trace.error("❌ Error extracting original body: " + e.getMessage(), e);
+			return "";
+		}
+	}
+	
+
 }
+
