@@ -579,7 +579,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	}
 	
 	/**
-	 * Extracts body from message as string
+	 * Extracts body from message as string using Body API
 	 */
 	private String extractBody(Message msg) {
 		try {
@@ -587,41 +587,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (bodyObj instanceof com.vordel.mime.Body) {
 				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
 				
-				// Try multiple approaches for JSONBody
-				if (body instanceof com.vordel.mime.JSONBody) {
-					com.vordel.mime.JSONBody jsonBody = (com.vordel.mime.JSONBody) body;
-					
-					// Approach 1: Try to get root node without parsing
-					try {
-						com.fasterxml.jackson.databind.JsonNode rootNode = jsonBody.getRootNode();
-						if (rootNode != null) {
-							String jsonContent = rootNode.toString();
-							if (jsonContent != null && !jsonContent.isEmpty()) {
-								Trace.debug("JSONBody extracted via getRootNode(): " + jsonContent.substring(0, Math.min(100, jsonContent.length())));
-								return jsonContent;
-							}
-						}
-					} catch (Exception e) {
-						Trace.debug("Could not get JSON root node: " + e.getMessage());
-					}
-					
-					// Approach 2: Try parsing first
-					try {
-						jsonBody.parse();
-						com.fasterxml.jackson.databind.JsonNode rootNode = jsonBody.getRootNode();
-						if (rootNode != null) {
-							String jsonContent = rootNode.toString();
-							if (jsonContent != null && !jsonContent.isEmpty()) {
-								Trace.debug("JSONBody extracted via parse() + getRootNode(): " + jsonContent.substring(0, Math.min(100, jsonContent.length())));
-								return jsonContent;
-							}
-						}
-					} catch (Exception e) {
-						Trace.debug("Could not parse JSON body: " + e.getMessage());
-					}
-				}
-				
-				// For all body types, try to get content using write() method
+				// Use the simple Body.write() method which all Body implementations support
 				try {
 					// Use ByteArrayOutputStream to capture the body content
 					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
@@ -638,13 +604,30 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 					Trace.debug("Could not extract body content using write(): " + e.getMessage());
 				}
 				
-				// Fallback: try toString() if it doesn't look like a Java object
-				String bodyStr = body.toString();
-				if (!bodyStr.startsWith("com.vordel.mime.")) {
-					Trace.debug("Body extracted via toString(): " + bodyStr.substring(0, Math.min(100, bodyStr.length())));
-					return bodyStr;
-				} else {
-					Trace.debug("Body is Java object: " + bodyStr);
+				// Fallback: try to get content length and use getInputStream if available
+				try {
+					long contentLength = body.getContentLength(0);
+					if (contentLength > 0) {
+						java.io.InputStream inputStream = body.getInputStream(0);
+						if (inputStream != null) {
+							java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+							byte[] buffer = new byte[1024];
+							int bytesRead;
+							while ((bytesRead = inputStream.read(buffer)) != -1) {
+								outputStream.write(buffer, 0, bytesRead);
+							}
+							inputStream.close();
+							outputStream.close();
+							
+							String content = outputStream.toString("UTF-8");
+							if (content != null && !content.isEmpty()) {
+								Trace.debug("Body extracted via getInputStream(): " + content.substring(0, Math.min(100, content.length())));
+								return content;
+							}
+						}
+					}
+				} catch (Exception e) {
+					Trace.debug("Could not extract body content using getInputStream(): " + e.getMessage());
 				}
 			}
 			
