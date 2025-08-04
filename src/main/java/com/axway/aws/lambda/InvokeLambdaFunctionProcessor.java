@@ -525,7 +525,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			
 			// Add request_body if configured
 			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
-				String body = extractBody(msg);
+				String body = extractOriginalBody(msg);
 				payload.put(bodyFieldName.trim(), body);
 			}
 			
@@ -579,11 +579,85 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	}
 	
 	/**
-	 * Extracts body from message as string using Body API
+	 * Extracts original request body from message as string
+	 */
+	private String extractOriginalBody(Message msg) {
+		try {
+			Trace.debug("=== Starting ORIGINAL body extraction ===");
+			
+			// Try to get the original request body before any processing
+			Object originalBodyObj = msg.get("http.request.body");
+			Trace.debug("Original body object type: " + (originalBodyObj != null ? originalBodyObj.getClass().getName() : "null"));
+			Trace.debug("Original body object toString: " + (originalBodyObj != null ? originalBodyObj.toString() : "null"));
+			
+			if (originalBodyObj instanceof com.vordel.mime.Body) {
+				com.vordel.mime.Body originalBody = (com.vordel.mime.Body) originalBodyObj;
+				Trace.debug("Original body is instance of com.vordel.mime.Body");
+				Trace.debug("Original body class: " + originalBody.getClass().getName());
+				
+				// Try to get content using write() method
+				try {
+					Trace.debug("Attempting to extract original body via write() method...");
+					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+					originalBody.write(outputStream, 0);
+					outputStream.close();
+					
+					String content = outputStream.toString("UTF-8");
+					Trace.debug("Original content length: " + (content != null ? content.length() : "null"));
+					Trace.debug("Original content: " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
+					
+					if (content != null && !content.isEmpty()) {
+						Trace.debug("✅ Original body extracted via write(): " + content.substring(0, Math.min(100, content.length())));
+						return content;
+					}
+				} catch (Exception e) {
+					Trace.debug("❌ Could not extract original body via write(): " + e.getMessage());
+				}
+			}
+			
+			// Fallback: try content.body but check if it's not a recursive payload
+			Trace.debug("Falling back to content.body...");
+			Object bodyObj = msg.get("content.body");
+			if (bodyObj instanceof com.vordel.mime.Body) {
+				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
+				
+				try {
+					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+					body.write(outputStream, 0);
+					outputStream.close();
+					
+					String content = outputStream.toString("UTF-8");
+					Trace.debug("Content.body content: " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
+					
+					// Check if this looks like our own payload (recursive)
+					if (content != null && content.contains("request_body") && content.contains("request_headers")) {
+						Trace.debug("❌ Content.body contains recursive payload, skipping");
+						return "";
+					}
+					
+					if (content != null && !content.isEmpty()) {
+						Trace.debug("✅ Content.body extracted: " + content.substring(0, Math.min(100, content.length())));
+						return content;
+					}
+				} catch (Exception e) {
+					Trace.debug("❌ Could not extract content.body: " + e.getMessage());
+				}
+			}
+			
+			Trace.debug("❌ No original body content found, returning empty string");
+			return "";
+		} catch (Exception e) {
+			Trace.error("❌ Error extracting original body: " + e.getMessage(), e);
+			return "";
+		}
+	}
+	
+	/**
+	 * Extracts body from message as string using Body API (legacy method)
 	 */
 	private String extractBody(Message msg) {
 		try {
-			Trace.debug("=== Starting body extraction ===");
+			Trace.debug("=== Starting body extraction (legacy) ===");
 			
 			Object bodyObj = msg.get("content.body");
 			Trace.debug("Body object type: " + (bodyObj != null ? bodyObj.getClass().getName() : "null"));
