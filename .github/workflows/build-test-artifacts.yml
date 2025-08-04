@@ -312,16 +312,24 @@ jobs:
           rm -rf "$ZIP_DIR"
         done
         
+    - name: Sanitize branch name
+      run: |
+        # Sanitize branch name for artifact naming
+        BRANCH_NAME_SANITIZED=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+        echo "BRANCH_NAME_SANITIZED=$BRANCH_NAME_SANITIZED" >> $GITHUB_ENV
+        echo "📋 Original branch name: ${{ github.ref_name }}"
+        echo "📋 Sanitized branch name: $BRANCH_NAME_SANITIZED"
+        
     - name: Upload Test Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: test-artifacts-${{ github.ref_name }}
+        name: test-artifacts-${{ env.BRANCH_NAME_SANITIZED }}
         path: aws-lambda-apim-sdk-*-TEST.zip
         retention-days: 7
         
     - name: Upload JARs as artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: test-jars-${{ github.ref_name }}
+        name: test-jars-${{ env.BRANCH_NAME_SANITIZED }}
         path: build/libs/aws-lambda-apim-sdk-*.jar
         retention-days: 7 
