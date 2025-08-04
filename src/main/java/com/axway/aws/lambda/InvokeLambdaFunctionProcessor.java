@@ -652,6 +652,45 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 							(value != null ? value.getClass().getName() : "null"));
 					}
 				}
+				
+				// Try direct cast like TraceProcessor does
+				Trace.debug("Trying direct cast like TraceProcessor...");
+				try {
+					Object directBody = msg.get("content.body");
+					if (directBody != null) {
+						Trace.debug("Direct body object: " + directBody.getClass().getName());
+						
+						// Try to cast directly like TraceProcessor
+						java.lang.reflect.Method getHeadersMethod = directBody.getClass().getMethod("getHeaders");
+						Object headers = getHeadersMethod.invoke(directBody);
+						Trace.debug("Headers: " + (headers != null ? headers.getClass().getName() : "null"));
+						
+						java.io.ByteArrayOutputStream os = new java.io.ByteArrayOutputStream();
+						try {
+							// Write headers if available
+							if (headers != null) {
+								java.lang.reflect.Method headersWriteMethod = headers.getClass().getMethod("write", 
+									java.io.OutputStream.class, int.class);
+								headersWriteMethod.invoke(headers, os, 0);
+							}
+							
+							// Write body
+							java.lang.reflect.Method bodyWriteMethod = directBody.getClass().getMethod("write", 
+								java.io.OutputStream.class, int.class);
+							bodyWriteMethod.invoke(directBody, os, 0);
+							
+							String content = new String(os.toByteArray(), "UTF-8");
+							Trace.debug("✅ Body extracted with headers: " + content.substring(0, Math.min(100, content.length())));
+							return content;
+						} catch (Exception e) {
+							Trace.debug("❌ Could not extract body with headers: " + e.getMessage());
+						} finally {
+							os.close();
+						}
+					}
+				} catch (Exception e) {
+					Trace.debug("❌ Could not try direct cast: " + e.getMessage());
+				}
 			}
 			
 			Trace.debug("❌ No original body content found, returning empty string");
