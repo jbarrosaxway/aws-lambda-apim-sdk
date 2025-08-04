@@ -69,25 +69,25 @@ fields:
   payloadMethodField:
     type: string
     defaultValues:
-    - data: ""
+    - data: "request_method"
     cardinality: 1
   payloadHeadersField:
     type: string
     defaultValues:
-    - data: ""
+    - data: "request_headers"
     cardinality: 1
   payloadBodyField:
     type: string
     defaultValues:
-    - data: ""
+    - data: "request_body"
     cardinality: 1
   payloadUriField:
     type: string
     defaultValues:
-    - data: ""
+    - data: "request_uri"
     cardinality: 1
   payloadQueryStringField:
     type: string
     defaultValues:
-    - data: ""
+    - data: "request_querystring"
     cardinality: 1
