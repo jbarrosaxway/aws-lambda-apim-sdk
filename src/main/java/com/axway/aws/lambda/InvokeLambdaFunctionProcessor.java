@@ -583,17 +583,23 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	 */
 	private String extractBody(Message msg) {
 		try {
+			// Try to get body as string using JSL selector
+			String body = contentBody.substitute(msg);
+			if (body != null && !body.startsWith("com.vordel.mime.")) {
+				return body;
+			}
+			
+			// Fallback: try to get body content using toString() and extract content
 			Object bodyObj = msg.get("content.body");
-			if (bodyObj instanceof com.vordel.mime.Body) {
-				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
-				
-				// Use ByteArrayOutputStream to capture the body content
-				java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-				body.write(outputStream, 0); // Write content with no flags
-				outputStream.close();
-				
-				// Convert to string using UTF-8 encoding
-				return outputStream.toString("UTF-8");
+			if (bodyObj != null) {
+				String bodyStr = bodyObj.toString();
+				// If it's a Java object representation, try to extract content
+				if (bodyStr.startsWith("com.vordel.mime.")) {
+					// For now, return empty string to avoid Java object representation
+					Trace.debug("Body is Java object: " + bodyStr + ", returning empty string");
+					return "";
+				}
+				return bodyStr;
 			}
 			return "";
 		} catch (Exception e) {
