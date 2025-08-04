@@ -77,6 +77,12 @@ dependencies {
     def useAxwayAwsSdk = System.getProperty('use.axway.aws.sdk', 'true').toBoolean()
     def fallbackAwsSdkVersion = System.getProperty('fallback.aws.sdk.version', '1.12.314')
     
+    // Include all Axway core JARs for Disposable and other dependencies
+    def axwayCoreJars = fileTree(dir: "${apim_folder}/lib", include: '*.jar')
+    def axwayJceJars = fileTree(dir: "${apim_folder}/lib/jce", include: '*.jar')
+    implementation axwayCoreJars
+    implementation axwayJceJars
+    
     if (useAxwayAwsSdk) {
         // Use AWS SDK from Axway (recommended)
         println "🔍 Using Axway AWS SDK: ${apim_folder}/lib"
