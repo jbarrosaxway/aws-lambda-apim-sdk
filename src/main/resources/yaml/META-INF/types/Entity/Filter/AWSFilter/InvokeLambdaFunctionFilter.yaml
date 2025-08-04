@@ -66,3 +66,28 @@ fields:
     defaultValues:
     - data: ""
     cardinality: 1
+  payloadMethodField:
+    type: string
+    defaultValues:
+    - data: ""
+    cardinality: 1
+  payloadHeadersField:
+    type: string
+    defaultValues:
+    - data: ""
+    cardinality: 1
+  payloadBodyField:
+    type: string
+    defaultValues:
+    - data: ""
+    cardinality: 1
+  payloadUriField:
+    type: string
+    defaultValues:
+    - data: ""
+    cardinality: 1
+  payloadQueryStringField:
+    type: string
+    defaultValues:
+    - data: ""
+    cardinality: 1
