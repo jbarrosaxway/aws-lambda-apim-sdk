@@ -587,6 +587,9 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			
 			// Follow the exact same pattern as TraceProcessor
 			Object bodyObj = msg.get("content.body");
+			Trace.debug("Body object: " + (bodyObj != null ? bodyObj.getClass().getName() : "null"));
+			Trace.debug("Body object toString: " + (bodyObj != null ? bodyObj.toString() : "null"));
+			
 			if (bodyObj != null && bodyObj.getClass().getName().contains("vordel.mime.Body")) {
 				Trace.debug("Found content.body: " + bodyObj.getClass().getName());
 				
@@ -638,6 +641,17 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				}
 			} else {
 				Trace.debug("❌ No content.body found or not a Body instance");
+				
+				// Try to find any body-related keys in the message
+				Trace.debug("Searching for other body keys...");
+				java.util.Set<String> keys = msg.keySet();
+				for (String key : keys) {
+					if (key.toLowerCase().contains("body")) {
+						Object value = msg.get(key);
+						Trace.debug("Found body-related key: " + key + " = " + 
+							(value != null ? value.getClass().getName() : "null"));
+					}
+				}
 			}
 			
 			Trace.debug("❌ No original body content found, returning empty string");
