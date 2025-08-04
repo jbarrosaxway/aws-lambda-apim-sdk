@@ -667,20 +667,13 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 						
 						java.io.ByteArrayOutputStream os = new java.io.ByteArrayOutputStream();
 						try {
-							// Write headers if available
-							if (headers != null) {
-								java.lang.reflect.Method headersWriteMethod = headers.getClass().getMethod("write", 
-									java.io.OutputStream.class, int.class);
-								headersWriteMethod.invoke(headers, os, 0);
-							}
-							
-							// Write body
+							// Write only body (skip headers)
 							java.lang.reflect.Method bodyWriteMethod = directBody.getClass().getMethod("write", 
 								java.io.OutputStream.class, int.class);
 							bodyWriteMethod.invoke(directBody, os, 0);
 							
 							String content = new String(os.toByteArray(), "UTF-8");
-							Trace.debug("✅ Body extracted with headers: " + content.substring(0, Math.min(100, content.length())));
+							Trace.debug("✅ Body extracted (headers skipped): " + content.substring(0, Math.min(100, content.length())));
 							return content;
 						} catch (Exception e) {
 							Trace.debug("❌ Could not extract body with headers: " + e.getMessage());
