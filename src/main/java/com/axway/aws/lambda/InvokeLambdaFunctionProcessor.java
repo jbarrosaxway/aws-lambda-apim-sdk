@@ -583,8 +583,23 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	 */
 	private String extractBody(Message msg) {
 		try {
-			String body = contentBody.substitute(msg);
-			return body != null ? body : "";
+			Object bodyObj = msg.get("content.body");
+			if (bodyObj instanceof com.vordel.mime.Body) {
+				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
+				java.io.InputStream inputStream = body.getInputStream();
+				if (inputStream != null) {
+					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+					byte[] buffer = new byte[1024];
+					int bytesRead;
+					while ((bytesRead = inputStream.read(buffer)) != -1) {
+						outputStream.write(buffer, 0, bytesRead);
+					}
+					inputStream.close();
+					outputStream.close();
+					return outputStream.toString("UTF-8");
+				}
+			}
+			return "";
 		} catch (Exception e) {
 			Trace.error("Error extracting body: " + e.getMessage(), e);
 			return "";
