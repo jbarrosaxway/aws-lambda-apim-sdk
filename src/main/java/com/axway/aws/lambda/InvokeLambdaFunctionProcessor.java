@@ -586,18 +586,14 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			Object bodyObj = msg.get("content.body");
 			if (bodyObj instanceof com.vordel.mime.Body) {
 				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
-				java.io.InputStream inputStream = body.getInputStream();
-				if (inputStream != null) {
-					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-					byte[] buffer = new byte[1024];
-					int bytesRead;
-					while ((bytesRead = inputStream.read(buffer)) != -1) {
-						outputStream.write(buffer, 0, bytesRead);
-					}
-					inputStream.close();
-					outputStream.close();
-					return outputStream.toString("UTF-8");
-				}
+				
+				// Use ByteArrayOutputStream to capture the body content
+				java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+				body.write(outputStream, 0); // Write content with no flags
+				outputStream.close();
+				
+				// Convert to string using UTF-8 encoding
+				return outputStream.toString("UTF-8");
 			}
 			return "";
 		} catch (Exception e) {
