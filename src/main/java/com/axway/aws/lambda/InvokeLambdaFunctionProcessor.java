@@ -511,34 +511,44 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			String uriFieldName = payloadUriField != null ? payloadUriField.substitute(msg) : null;
 			String queryStringFieldName = payloadQueryStringField != null ? payloadQueryStringField.substitute(msg) : null;
 			
-			// Add request_method if configured
+			// Add request_method if configured and not empty
 			if (methodFieldName != null && !methodFieldName.trim().isEmpty()) {
-				String method = msg.get("http.request.verb") != null ? msg.get("http.request.verb").toString() : "GET";
-				payload.put(methodFieldName.trim(), method);
+				String method = msg.get("http.request.verb") != null ? msg.get("http.request.verb").toString() : null;
+				if (method != null && !method.trim().isEmpty()) {
+					payload.put(methodFieldName.trim(), method);
+				}
 			}
 			
-			// Add request_headers if configured
+			// Add request_headers if configured and not empty
 			if (headersFieldName != null && !headersFieldName.trim().isEmpty()) {
 				java.util.Map<String, String> headerMap = extractHeaders(msg);
-				payload.put(headersFieldName.trim(), headerMap);
+				if (headerMap != null && !headerMap.isEmpty()) {
+					payload.put(headersFieldName.trim(), headerMap);
+				}
 			}
 			
-			// Add request_body if configured
+			// Add request_body if configured and not empty
 			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
 				String body = extractOriginalBody(msg);
-				payload.put(bodyFieldName.trim(), body);
+				if (body != null && !body.trim().isEmpty()) {
+					payload.put(bodyFieldName.trim(), body);
+				}
 			}
 			
-			// Add request_uri if configured
+			// Add request_uri if configured and not empty
 			if (uriFieldName != null && !uriFieldName.trim().isEmpty()) {
-				String uri = msg.get("http.request.uri") != null ? msg.get("http.request.uri").toString() : "/";
-				payload.put(uriFieldName.trim(), uri);
+				String uri = msg.get("http.request.uri") != null ? msg.get("http.request.uri").toString() : null;
+				if (uri != null && !uri.trim().isEmpty()) {
+					payload.put(uriFieldName.trim(), uri);
+				}
 			}
 			
-			// Add request_querystring if configured
+			// Add request_querystring if configured and not empty
 			if (queryStringFieldName != null && !queryStringFieldName.trim().isEmpty()) {
-				String queryString = msg.get("http.request.querystring") != null ? msg.get("http.request.querystring").toString() : "";
-				payload.put(queryStringFieldName.trim(), queryString);
+				String queryString = msg.get("http.request.querystring") != null ? msg.get("http.request.querystring").toString() : null;
+				if (queryString != null && !queryString.trim().isEmpty()) {
+					payload.put(queryStringFieldName.trim(), queryString);
+				}
 			}
 			
 			// Convert to JSON
