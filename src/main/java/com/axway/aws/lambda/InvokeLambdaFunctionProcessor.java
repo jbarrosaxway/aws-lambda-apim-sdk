@@ -579,130 +579,65 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	}
 	
 	/**
-	 * Extracts original request body from message as string
+	 * Extracts original request body from message as string (following TraceProcessor pattern)
 	 */
 	private String extractOriginalBody(Message msg) {
 		try {
-			Trace.debug("=== Starting ORIGINAL body extraction ===");
+			Trace.debug("=== Starting ORIGINAL body extraction (TraceProcessor pattern) ===");
 			
-			// Try to get the raw request body before any processing
-			Trace.debug("Trying to access raw request body...");
-			
-			// Method 1: Try to get the raw request body directly
-			try {
-				Object rawBodyObj = msg.get("http.request.raw");
-				if (rawBodyObj != null) {
-					Trace.debug("Found http.request.raw: " + rawBodyObj.getClass().getName());
-					if (rawBodyObj instanceof byte[]) {
-						String content = new String((byte[]) rawBodyObj, "UTF-8");
-						Trace.debug("✅ Raw body extracted: " + content.substring(0, Math.min(100, content.length())));
-						return content;
-					}
-				}
-			} catch (Exception e) {
-				Trace.debug("❌ Could not access http.request.raw: " + e.getMessage());
-			}
-			
-			// Method 2: Try to get the original request body before processing
-			try {
-				Object originalBodyObj = msg.get("http.request.body");
-				if (originalBodyObj != null && originalBodyObj.getClass().getName().contains("vordel.mime.Body")) {
-					Trace.debug("Found http.request.body: " + originalBodyObj.getClass().getName());
+			// Follow the exact same pattern as TraceProcessor
+			Object bodyObj = msg.get("content.body");
+			if (bodyObj != null && bodyObj.getClass().getName().contains("vordel.mime.Body")) {
+				Trace.debug("Found content.body: " + bodyObj.getClass().getName());
+				
+				java.io.ByteArrayOutputStream os = new java.io.ByteArrayOutputStream();
+				try {
+					// Use reflection to call write method (like TraceProcessor does)
+					java.lang.reflect.Method writeMethod = bodyObj.getClass().getMethod("write", 
+						java.io.OutputStream.class, int.class);
+					writeMethod.invoke(bodyObj, os, 0);
 					
-					// Try to get the source content directly using reflection
-					try {
-						java.lang.reflect.Method getSourceMethod = originalBodyObj.getClass().getMethod("getSource");
-						Object source = getSourceMethod.invoke(originalBodyObj);
-						if (source != null) {
-							Trace.debug("✅ Found source: " + source.getClass().getName());
-							
-							// Try to get input stream from source
-							try {
-								java.lang.reflect.Method getInputStreamMethod = source.getClass().getMethod("getInputStream");
-								java.io.InputStream inputStream = (java.io.InputStream) getInputStreamMethod.invoke(source);
-								if (inputStream != null) {
-									java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-									byte[] buffer = new byte[1024];
-									int bytesRead;
-									while ((bytesRead = inputStream.read(buffer)) != -1) {
-										outputStream.write(buffer, 0, bytesRead);
-									}
-									inputStream.close();
-									outputStream.close();
-									
-									String content = outputStream.toString("UTF-8");
-									Trace.debug("✅ Original body from source: " + content.substring(0, Math.min(100, content.length())));
-									return content;
-								}
-							} catch (Exception e) {
-								Trace.debug("❌ Could not get input stream from source: " + e.getMessage());
-							}
-						}
-					} catch (Exception e) {
-						Trace.debug("❌ Could not get source: " + e.getMessage());
-					}
-				}
-			} catch (Exception e) {
-				Trace.debug("❌ Could not access http.request.body: " + e.getMessage());
-			}
-			
-			// Method 3: Try to get the request body before any filters processed it
-			try {
-				Object preProcessedBodyObj = msg.get("http.request.preprocessed");
-				if (preProcessedBodyObj != null && preProcessedBodyObj.getClass().getName().contains("vordel.mime.Body")) {
-					Trace.debug("Found http.request.preprocessed: " + preProcessedBodyObj.getClass().getName());
+					String content = new String(os.toByteArray(), "UTF-8");
+					Trace.debug("✅ Body extracted (TraceProcessor pattern): " + content.substring(0, Math.min(100, content.length())));
 					
-					// Use reflection to call write method
-					try {
-						java.lang.reflect.Method writeMethod = preProcessedBodyObj.getClass().getMethod("write", 
-							java.io.OutputStream.class, int.class);
-						java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-						writeMethod.invoke(preProcessedBodyObj, outputStream, 0);
-						outputStream.close();
+					// Check if this looks like our own payload (recursive)
+					if (content != null && content.contains("request_body") && content.contains("request_headers")) {
+						Trace.debug("❌ Content contains recursive payload, trying alternative...");
 						
-						String content = outputStream.toString("UTF-8");
-						Trace.debug("✅ Preprocessed body: " + content.substring(0, Math.min(100, content.length())));
-						return content;
-					} catch (Exception e) {
-						Trace.debug("❌ Could not write preprocessed body: " + e.getMessage());
-					}
-				}
-			} catch (Exception e) {
-				Trace.debug("❌ Could not access http.request.preprocessed: " + e.getMessage());
-			}
-			
-			// Method 4: Try to get the request body from the original request context
-			try {
-				Object requestContextObj = msg.get("http.request.context");
-				if (requestContextObj != null) {
-					Trace.debug("Found http.request.context: " + requestContextObj.getClass().getName());
-					
-					// Try to get body from context
-					try {
-						java.lang.reflect.Method getBodyMethod = requestContextObj.getClass().getMethod("getBody");
-						Object contextBody = getBodyMethod.invoke(requestContextObj);
-						if (contextBody != null && contextBody.getClass().getName().contains("vordel.mime.Body")) {
-							// Use reflection to call write method
+						// Try to get the original request body before processing
+						Object originalBodyObj = msg.get("http.request.body");
+						if (originalBodyObj != null && originalBodyObj.getClass().getName().contains("vordel.mime.Body")) {
+							Trace.debug("Found http.request.body: " + originalBodyObj.getClass().getName());
+							
+							java.io.ByteArrayOutputStream originalOs = new java.io.ByteArrayOutputStream();
 							try {
-								java.lang.reflect.Method writeMethod = contextBody.getClass().getMethod("write", 
+								java.lang.reflect.Method originalWriteMethod = originalBodyObj.getClass().getMethod("write", 
 									java.io.OutputStream.class, int.class);
-								java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-								writeMethod.invoke(contextBody, outputStream, 0);
-								outputStream.close();
+								originalWriteMethod.invoke(originalBodyObj, originalOs, 0);
 								
-								String content = outputStream.toString("UTF-8");
-								Trace.debug("✅ Context body: " + content.substring(0, Math.min(100, content.length())));
-								return content;
+								String originalContent = new String(originalOs.toByteArray(), "UTF-8");
+								Trace.debug("✅ Original body from http.request.body: " + originalContent.substring(0, Math.min(100, originalContent.length())));
+								return originalContent;
 							} catch (Exception e) {
-								Trace.debug("❌ Could not write context body: " + e.getMessage());
+								Trace.debug("❌ Could not write original body: " + e.getMessage());
+							} finally {
+								originalOs.close();
 							}
 						}
-					} catch (Exception e) {
-						Trace.debug("❌ Could not get body from context: " + e.getMessage());
+						
+						// If still recursive, return empty
+						Trace.debug("❌ Still recursive, returning empty string");
+						return "";
 					}
+					
+					return content;
+				} catch (Exception e) {
+					Trace.debug("❌ Could not extract body using TraceProcessor pattern: " + e.getMessage());
+				} finally {
+					os.close();
 				}
-			} catch (Exception e) {
-				Trace.debug("❌ Could not access http.request.context: " + e.getMessage());
+			} else {
+				Trace.debug("❌ No content.body found or not a Body instance");
 			}
 			
 			Trace.debug("❌ No original body content found, returning empty string");
