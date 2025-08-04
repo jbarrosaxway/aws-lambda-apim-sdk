@@ -585,63 +585,70 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		try {
 			Trace.debug("=== Starting ORIGINAL body extraction ===");
 			
-			// Try to get the original request body before any processing
-			Object originalBodyObj = msg.get("http.request.body");
-			Trace.debug("Original body object type: " + (originalBodyObj != null ? originalBodyObj.getClass().getName() : "null"));
-			Trace.debug("Original body object toString: " + (originalBodyObj != null ? originalBodyObj.toString() : "null"));
+			// Try multiple approaches to get the original request body
+			String[] bodyKeys = {"http.request.body", "content.body", "http.body"};
 			
-			if (originalBodyObj instanceof com.vordel.mime.Body) {
-				com.vordel.mime.Body originalBody = (com.vordel.mime.Body) originalBodyObj;
-				Trace.debug("Original body is instance of com.vordel.mime.Body");
-				Trace.debug("Original body class: " + originalBody.getClass().getName());
+			for (String bodyKey : bodyKeys) {
+				Trace.debug("Trying body key: " + bodyKey);
+				Object bodyObj = msg.get(bodyKey);
 				
-				// Try to get content using write() method
-				try {
-					Trace.debug("Attempting to extract original body via write() method...");
-					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-					originalBody.write(outputStream, 0);
-					outputStream.close();
+				if (bodyObj instanceof com.vordel.mime.Body) {
+					com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
+					Trace.debug("Body class: " + body.getClass().getName());
+					Trace.debug("Body toString: " + body.toString());
 					
-					String content = outputStream.toString("UTF-8");
-					Trace.debug("Original content length: " + (content != null ? content.length() : "null"));
-					Trace.debug("Original content: " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
-					
-					if (content != null && !content.isEmpty()) {
-						Trace.debug("✅ Original body extracted via write(): " + content.substring(0, Math.min(100, content.length())));
-						return content;
+					// Try writeContent() method (like RawBody does)
+					try {
+						Trace.debug("Attempting to extract via writeContent() method...");
+						java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+						
+						// Use reflection to call writeContent if available
+						try {
+							java.lang.reflect.Method writeContentMethod = body.getClass().getMethod("writeContent", 
+								java.io.OutputStream.class, int.class);
+							writeContentMethod.invoke(body, outputStream, 0);
+							Trace.debug("✅ Used writeContent() method");
+						} catch (NoSuchMethodException e) {
+							// Fallback to write() method
+							body.write(outputStream, 0);
+							Trace.debug("✅ Used write() method");
+						}
+						
+						outputStream.close();
+						String content = outputStream.toString("UTF-8");
+						Trace.debug("Content length: " + (content != null ? content.length() : "null"));
+						Trace.debug("Content preview: " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
+						
+						// Check if this looks like our own payload (recursive)
+						if (content != null && content.contains("request_body") && content.contains("request_headers")) {
+							Trace.debug("❌ Content contains recursive payload, trying next key");
+							continue;
+						}
+						
+						if (content != null && !content.isEmpty()) {
+							Trace.debug("✅ Body extracted from " + bodyKey + ": " + content.substring(0, Math.min(100, content.length())));
+							return content;
+						}
+					} catch (Exception e) {
+						Trace.debug("❌ Could not extract body from " + bodyKey + ": " + e.getMessage());
 					}
-				} catch (Exception e) {
-					Trace.debug("❌ Could not extract original body via write(): " + e.getMessage());
+				} else {
+					Trace.debug("Body object is not instance of com.vordel.mime.Body: " + 
+						(bodyObj != null ? bodyObj.getClass().getName() : "null"));
 				}
 			}
 			
-			// Fallback: try content.body but check if it's not a recursive payload
-			Trace.debug("Falling back to content.body...");
-			Object bodyObj = msg.get("content.body");
-			if (bodyObj instanceof com.vordel.mime.Body) {
-				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
-				
-				try {
-					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-					body.write(outputStream, 0);
-					outputStream.close();
-					
-					String content = outputStream.toString("UTF-8");
-					Trace.debug("Content.body content: " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
-					
-					// Check if this looks like our own payload (recursive)
-					if (content != null && content.contains("request_body") && content.contains("request_headers")) {
-						Trace.debug("❌ Content.body contains recursive payload, skipping");
-						return "";
-					}
-					
-					if (content != null && !content.isEmpty()) {
-						Trace.debug("✅ Content.body extracted: " + content.substring(0, Math.min(100, content.length())));
-						return content;
-					}
-				} catch (Exception e) {
-					Trace.debug("❌ Could not extract content.body: " + e.getMessage());
+			// Final fallback: try JSL selector
+			Trace.debug("Trying JSL selector fallback...");
+			try {
+				String body = contentBody.substitute(msg);
+				if (body != null && !body.startsWith("com.vordel.mime.") && 
+					!body.contains("request_body") && !body.contains("request_headers")) {
+					Trace.debug("✅ Body extracted via JSL selector: " + body.substring(0, Math.min(100, body.length())));
+					return body;
 				}
+			} catch (Exception e) {
+				Trace.debug("❌ JSL selector failed: " + e.getMessage());
 			}
 			
 			Trace.debug("❌ No original body content found, returning empty string");
