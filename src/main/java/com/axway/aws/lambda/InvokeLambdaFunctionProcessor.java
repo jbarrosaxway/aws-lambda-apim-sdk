@@ -583,12 +583,29 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	 */
 	private String extractBody(Message msg) {
 		try {
+			Trace.debug("=== Starting body extraction ===");
+			
 			Object bodyObj = msg.get("content.body");
+			Trace.debug("Body object type: " + (bodyObj != null ? bodyObj.getClass().getName() : "null"));
+			Trace.debug("Body object toString: " + (bodyObj != null ? bodyObj.toString() : "null"));
+			
 			if (bodyObj instanceof com.vordel.mime.Body) {
 				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
+				Trace.debug("Body is instance of com.vordel.mime.Body");
+				Trace.debug("Body class: " + body.getClass().getName());
+				Trace.debug("Body toString: " + body.toString());
+				
+				// Check if content is available
+				try {
+					boolean contentAvailable = body.contentAvailable();
+					Trace.debug("Body contentAvailable: " + contentAvailable);
+				} catch (Exception e) {
+					Trace.debug("Could not check contentAvailable: " + e.getMessage());
+				}
 				
 				// Use the simple Body.write() method which all Body implementations support
 				try {
+					Trace.debug("Attempting to extract via write() method...");
 					// Use ByteArrayOutputStream to capture the body content
 					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
 					body.write(outputStream, 0); // Write content with no flags
@@ -596,53 +613,94 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 					
 					// Convert to string using UTF-8 encoding
 					String content = outputStream.toString("UTF-8");
+					Trace.debug("Content length from write(): " + (content != null ? content.length() : "null"));
+					Trace.debug("Content from write(): " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
+					
 					if (content != null && !content.isEmpty()) {
-						Trace.debug("Body extracted via write(): " + content.substring(0, Math.min(100, content.length())));
+						Trace.debug("✅ Body extracted via write(): " + content.substring(0, Math.min(100, content.length())));
 						return content;
+					} else {
+						Trace.debug("❌ Content from write() is null or empty");
 					}
 				} catch (Exception e) {
-					Trace.debug("Could not extract body content using write(): " + e.getMessage());
+					Trace.debug("❌ Could not extract body content using write(): " + e.getMessage());
+					e.printStackTrace();
 				}
 				
 				// Fallback: try to get content length and use getInputStream if available
 				try {
+					Trace.debug("Attempting to extract via getInputStream() method...");
 					long contentLength = body.getContentLength(0);
+					Trace.debug("Content length: " + contentLength);
+					
 					if (contentLength > 0) {
 						java.io.InputStream inputStream = body.getInputStream(0);
+						Trace.debug("InputStream obtained: " + (inputStream != null ? "yes" : "no"));
+						
 						if (inputStream != null) {
 							java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
 							byte[] buffer = new byte[1024];
 							int bytesRead;
+							int totalBytes = 0;
 							while ((bytesRead = inputStream.read(buffer)) != -1) {
 								outputStream.write(buffer, 0, bytesRead);
+								totalBytes += bytesRead;
 							}
 							inputStream.close();
 							outputStream.close();
 							
+							Trace.debug("Total bytes read: " + totalBytes);
 							String content = outputStream.toString("UTF-8");
+							Trace.debug("Content from getInputStream(): " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
+							
 							if (content != null && !content.isEmpty()) {
-								Trace.debug("Body extracted via getInputStream(): " + content.substring(0, Math.min(100, content.length())));
+								Trace.debug("✅ Body extracted via getInputStream(): " + content.substring(0, Math.min(100, content.length())));
 								return content;
+							} else {
+								Trace.debug("❌ Content from getInputStream() is null or empty");
 							}
 						}
+					} else {
+						Trace.debug("❌ Content length is 0 or negative");
 					}
 				} catch (Exception e) {
-					Trace.debug("Could not extract body content using getInputStream(): " + e.getMessage());
+					Trace.debug("❌ Could not extract body content using getInputStream(): " + e.getMessage());
+					e.printStackTrace();
 				}
+				
+				// Try toString() as last resort
+				try {
+					String bodyStr = body.toString();
+					Trace.debug("Body toString(): " + bodyStr);
+					if (!bodyStr.startsWith("com.vordel.mime.")) {
+						Trace.debug("✅ Body extracted via toString(): " + bodyStr.substring(0, Math.min(100, bodyStr.length())));
+						return bodyStr;
+					} else {
+						Trace.debug("❌ Body toString() returns Java object reference");
+					}
+				} catch (Exception e) {
+					Trace.debug("❌ Could not get body toString(): " + e.getMessage());
+				}
+			} else {
+				Trace.debug("❌ Body object is not instance of com.vordel.mime.Body");
 			}
 			
 			// Final fallback: try to get body as string using JSL selector
+			Trace.debug("Attempting JSL selector fallback...");
 			String body = contentBody.substitute(msg);
+			Trace.debug("JSL selector result: " + (body != null ? body.substring(0, Math.min(100, body.length())) : "null"));
+			
 			if (body != null && !body.startsWith("com.vordel.mime.")) {
-				Trace.debug("Body extracted via JSL selector: " + body.substring(0, Math.min(100, body.length())));
+				Trace.debug("✅ Body extracted via JSL selector: " + body.substring(0, Math.min(100, body.length())));
 				return body;
 			}
 			
-			Trace.debug("No valid body content found, returning empty string");
+			Trace.debug("❌ No valid body content found, returning empty string");
 			return "";
 		} catch (Exception e) {
-			Trace.error("Error extracting body: " + e.getMessage(), e);
+			Trace.error("❌ Error extracting body: " + e.getMessage(), e);
 			return "";
 		}
 	}
 }
+
