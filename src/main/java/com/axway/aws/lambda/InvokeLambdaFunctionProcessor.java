@@ -585,70 +585,124 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		try {
 			Trace.debug("=== Starting ORIGINAL body extraction ===");
 			
-			// Try multiple approaches to get the original request body
-			String[] bodyKeys = {"http.request.body", "content.body", "http.body"};
+			// Try to get the raw request body before any processing
+			Trace.debug("Trying to access raw request body...");
 			
-			for (String bodyKey : bodyKeys) {
-				Trace.debug("Trying body key: " + bodyKey);
-				Object bodyObj = msg.get(bodyKey);
-				
-				if (bodyObj instanceof com.vordel.mime.Body) {
-					com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
-					Trace.debug("Body class: " + body.getClass().getName());
-					Trace.debug("Body toString: " + body.toString());
-					
-					// Try writeContent() method (like RawBody does)
-					try {
-						Trace.debug("Attempting to extract via writeContent() method...");
-						java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-						
-						// Use reflection to call writeContent if available
-						try {
-							java.lang.reflect.Method writeContentMethod = body.getClass().getMethod("writeContent", 
-								java.io.OutputStream.class, int.class);
-							writeContentMethod.invoke(body, outputStream, 0);
-							Trace.debug("✅ Used writeContent() method");
-						} catch (NoSuchMethodException e) {
-							// Fallback to write() method
-							body.write(outputStream, 0);
-							Trace.debug("✅ Used write() method");
-						}
-						
-						outputStream.close();
-						String content = outputStream.toString("UTF-8");
-						Trace.debug("Content length: " + (content != null ? content.length() : "null"));
-						Trace.debug("Content preview: " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
-						
-						// Check if this looks like our own payload (recursive)
-						if (content != null && content.contains("request_body") && content.contains("request_headers")) {
-							Trace.debug("❌ Content contains recursive payload, trying next key");
-							continue;
-						}
-						
-						if (content != null && !content.isEmpty()) {
-							Trace.debug("✅ Body extracted from " + bodyKey + ": " + content.substring(0, Math.min(100, content.length())));
-							return content;
-						}
-					} catch (Exception e) {
-						Trace.debug("❌ Could not extract body from " + bodyKey + ": " + e.getMessage());
-					}
-				} else {
-					Trace.debug("Body object is not instance of com.vordel.mime.Body: " + 
-						(bodyObj != null ? bodyObj.getClass().getName() : "null"));
-				}
-			}
-			
-			// Final fallback: try JSL selector
-			Trace.debug("Trying JSL selector fallback...");
+			// Method 1: Try to get the raw request body directly
 			try {
-				String body = contentBody.substitute(msg);
-				if (body != null && !body.startsWith("com.vordel.mime.") && 
-					!body.contains("request_body") && !body.contains("request_headers")) {
-					Trace.debug("✅ Body extracted via JSL selector: " + body.substring(0, Math.min(100, body.length())));
-					return body;
+				Object rawBodyObj = msg.get("http.request.raw");
+				if (rawBodyObj != null) {
+					Trace.debug("Found http.request.raw: " + rawBodyObj.getClass().getName());
+					if (rawBodyObj instanceof byte[]) {
+						String content = new String((byte[]) rawBodyObj, "UTF-8");
+						Trace.debug("✅ Raw body extracted: " + content.substring(0, Math.min(100, content.length())));
+						return content;
+					}
 				}
 			} catch (Exception e) {
-				Trace.debug("❌ JSL selector failed: " + e.getMessage());
+				Trace.debug("❌ Could not access http.request.raw: " + e.getMessage());
+			}
+			
+			// Method 2: Try to get the original request body before processing
+			try {
+				Object originalBodyObj = msg.get("http.request.body");
+				if (originalBodyObj != null && originalBodyObj.getClass().getName().contains("vordel.mime.Body")) {
+					Trace.debug("Found http.request.body: " + originalBodyObj.getClass().getName());
+					
+					// Try to get the source content directly using reflection
+					try {
+						java.lang.reflect.Method getSourceMethod = originalBodyObj.getClass().getMethod("getSource");
+						Object source = getSourceMethod.invoke(originalBodyObj);
+						if (source != null) {
+							Trace.debug("✅ Found source: " + source.getClass().getName());
+							
+							// Try to get input stream from source
+							try {
+								java.lang.reflect.Method getInputStreamMethod = source.getClass().getMethod("getInputStream");
+								java.io.InputStream inputStream = (java.io.InputStream) getInputStreamMethod.invoke(source);
+								if (inputStream != null) {
+									java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+									byte[] buffer = new byte[1024];
+									int bytesRead;
+									while ((bytesRead = inputStream.read(buffer)) != -1) {
+										outputStream.write(buffer, 0, bytesRead);
+									}
+									inputStream.close();
+									outputStream.close();
+									
+									String content = outputStream.toString("UTF-8");
+									Trace.debug("✅ Original body from source: " + content.substring(0, Math.min(100, content.length())));
+									return content;
+								}
+							} catch (Exception e) {
+								Trace.debug("❌ Could not get input stream from source: " + e.getMessage());
+							}
+						}
+					} catch (Exception e) {
+						Trace.debug("❌ Could not get source: " + e.getMessage());
+					}
+				}
+			} catch (Exception e) {
+				Trace.debug("❌ Could not access http.request.body: " + e.getMessage());
+			}
+			
+			// Method 3: Try to get the request body before any filters processed it
+			try {
+				Object preProcessedBodyObj = msg.get("http.request.preprocessed");
+				if (preProcessedBodyObj != null && preProcessedBodyObj.getClass().getName().contains("vordel.mime.Body")) {
+					Trace.debug("Found http.request.preprocessed: " + preProcessedBodyObj.getClass().getName());
+					
+					// Use reflection to call write method
+					try {
+						java.lang.reflect.Method writeMethod = preProcessedBodyObj.getClass().getMethod("write", 
+							java.io.OutputStream.class, int.class);
+						java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+						writeMethod.invoke(preProcessedBodyObj, outputStream, 0);
+						outputStream.close();
+						
+						String content = outputStream.toString("UTF-8");
+						Trace.debug("✅ Preprocessed body: " + content.substring(0, Math.min(100, content.length())));
+						return content;
+					} catch (Exception e) {
+						Trace.debug("❌ Could not write preprocessed body: " + e.getMessage());
+					}
+				}
+			} catch (Exception e) {
+				Trace.debug("❌ Could not access http.request.preprocessed: " + e.getMessage());
+			}
+			
+			// Method 4: Try to get the request body from the original request context
+			try {
+				Object requestContextObj = msg.get("http.request.context");
+				if (requestContextObj != null) {
+					Trace.debug("Found http.request.context: " + requestContextObj.getClass().getName());
+					
+					// Try to get body from context
+					try {
+						java.lang.reflect.Method getBodyMethod = requestContextObj.getClass().getMethod("getBody");
+						Object contextBody = getBodyMethod.invoke(requestContextObj);
+						if (contextBody != null && contextBody.getClass().getName().contains("vordel.mime.Body")) {
+							// Use reflection to call write method
+							try {
+								java.lang.reflect.Method writeMethod = contextBody.getClass().getMethod("write", 
+									java.io.OutputStream.class, int.class);
+								java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+								writeMethod.invoke(contextBody, outputStream, 0);
+								outputStream.close();
+								
+								String content = outputStream.toString("UTF-8");
+								Trace.debug("✅ Context body: " + content.substring(0, Math.min(100, content.length())));
+								return content;
+							} catch (Exception e) {
+								Trace.debug("❌ Could not write context body: " + e.getMessage());
+							}
+						}
+					} catch (Exception e) {
+						Trace.debug("❌ Could not get body from context: " + e.getMessage());
+					}
+				}
+			} catch (Exception e) {
+				Trace.debug("❌ Could not access http.request.context: " + e.getMessage());
 			}
 			
 			Trace.debug("❌ No original body content found, returning empty string");
@@ -659,129 +713,6 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		}
 	}
 	
-	/**
-	 * Extracts body from message as string using Body API (legacy method)
-	 */
-	private String extractBody(Message msg) {
-		try {
-			Trace.debug("=== Starting body extraction (legacy) ===");
-			
-			Object bodyObj = msg.get("content.body");
-			Trace.debug("Body object type: " + (bodyObj != null ? bodyObj.getClass().getName() : "null"));
-			Trace.debug("Body object toString: " + (bodyObj != null ? bodyObj.toString() : "null"));
-			
-			if (bodyObj instanceof com.vordel.mime.Body) {
-				com.vordel.mime.Body body = (com.vordel.mime.Body) bodyObj;
-				Trace.debug("Body is instance of com.vordel.mime.Body");
-				Trace.debug("Body class: " + body.getClass().getName());
-				Trace.debug("Body toString: " + body.toString());
-				
-				// Check if content is available
-				try {
-					boolean contentAvailable = body.contentAvailable();
-					Trace.debug("Body contentAvailable: " + contentAvailable);
-				} catch (Exception e) {
-					Trace.debug("Could not check contentAvailable: " + e.getMessage());
-				}
-				
-				// Use the simple Body.write() method which all Body implementations support
-				try {
-					Trace.debug("Attempting to extract via write() method...");
-					// Use ByteArrayOutputStream to capture the body content
-					java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-					body.write(outputStream, 0); // Write content with no flags
-					outputStream.close();
-					
-					// Convert to string using UTF-8 encoding
-					String content = outputStream.toString("UTF-8");
-					Trace.debug("Content length from write(): " + (content != null ? content.length() : "null"));
-					Trace.debug("Content from write(): " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
-					
-					if (content != null && !content.isEmpty()) {
-						Trace.debug("✅ Body extracted via write(): " + content.substring(0, Math.min(100, content.length())));
-						return content;
-					} else {
-						Trace.debug("❌ Content from write() is null or empty");
-					}
-				} catch (Exception e) {
-					Trace.debug("❌ Could not extract body content using write(): " + e.getMessage());
-					e.printStackTrace();
-				}
-				
-				// Fallback: try to get content length and use getInputStream if available
-				try {
-					Trace.debug("Attempting to extract via getInputStream() method...");
-					long contentLength = body.getContentLength(0);
-					Trace.debug("Content length: " + contentLength);
-					
-					if (contentLength > 0) {
-						java.io.InputStream inputStream = body.getInputStream(0);
-						Trace.debug("InputStream obtained: " + (inputStream != null ? "yes" : "no"));
-						
-						if (inputStream != null) {
-							java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
-							byte[] buffer = new byte[1024];
-							int bytesRead;
-							int totalBytes = 0;
-							while ((bytesRead = inputStream.read(buffer)) != -1) {
-								outputStream.write(buffer, 0, bytesRead);
-								totalBytes += bytesRead;
-							}
-							inputStream.close();
-							outputStream.close();
-							
-							Trace.debug("Total bytes read: " + totalBytes);
-							String content = outputStream.toString("UTF-8");
-							Trace.debug("Content from getInputStream(): " + (content != null ? content.substring(0, Math.min(100, content.length())) : "null"));
-							
-							if (content != null && !content.isEmpty()) {
-								Trace.debug("✅ Body extracted via getInputStream(): " + content.substring(0, Math.min(100, content.length())));
-								return content;
-							} else {
-								Trace.debug("❌ Content from getInputStream() is null or empty");
-							}
-						}
-					} else {
-						Trace.debug("❌ Content length is 0 or negative");
-					}
-				} catch (Exception e) {
-					Trace.debug("❌ Could not extract body content using getInputStream(): " + e.getMessage());
-					e.printStackTrace();
-				}
-				
-				// Try toString() as last resort
-				try {
-					String bodyStr = body.toString();
-					Trace.debug("Body toString(): " + bodyStr);
-					if (!bodyStr.startsWith("com.vordel.mime.")) {
-						Trace.debug("✅ Body extracted via toString(): " + bodyStr.substring(0, Math.min(100, bodyStr.length())));
-						return bodyStr;
-					} else {
-						Trace.debug("❌ Body toString() returns Java object reference");
-					}
-				} catch (Exception e) {
-					Trace.debug("❌ Could not get body toString(): " + e.getMessage());
-				}
-			} else {
-				Trace.debug("❌ Body object is not instance of com.vordel.mime.Body");
-			}
-			
-			// Final fallback: try to get body as string using JSL selector
-			Trace.debug("Attempting JSL selector fallback...");
-			String body = contentBody.substitute(msg);
-			Trace.debug("JSL selector result: " + (body != null ? body.substring(0, Math.min(100, body.length())) : "null"));
-			
-			if (body != null && !body.startsWith("com.vordel.mime.")) {
-				Trace.debug("✅ Body extracted via JSL selector: " + body.substring(0, Math.min(100, body.length())));
-				return body;
-			}
-			
-			Trace.debug("❌ No valid body content found, returning empty string");
-			return "";
-		} catch (Exception e) {
-			Trace.error("❌ Error extracting body: " + e.getMessage(), e);
-			return "";
-		}
-	}
+
 }
 
