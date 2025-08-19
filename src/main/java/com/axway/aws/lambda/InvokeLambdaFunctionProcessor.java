@@ -615,7 +615,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 					String headerName = nameIterator.next();
 					String headerValue = headers.getHeader(headerName);
 					if (headerValue != null) {
-						headerMap.put(headerName.toLowerCase(), headerValue);
+						headerMap.put(headerName, headerValue);
 					}
 				}
 			}
