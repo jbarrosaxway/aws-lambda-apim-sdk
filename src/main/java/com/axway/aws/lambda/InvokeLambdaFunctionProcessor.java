@@ -567,9 +567,9 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			
 			// Add request_querystring if configured and not empty
 			if (queryStringFieldName != null && !queryStringFieldName.trim().isEmpty()) {
-				String queryString = msg.get("http.request.querystring") != null ? msg.get("http.request.querystring").toString() : null;
-				if (queryString != null && !queryString.trim().isEmpty()) {
-					setNestedValue(payload, queryStringFieldName.trim(), queryString);
+				java.util.Map<String, Object> queryMap = extractQueryString(msg);
+				if (queryMap != null && !queryMap.isEmpty()) {
+					setNestedValue(payload, queryStringFieldName.trim(), queryMap);
 				}
 			}
 			
@@ -623,6 +623,41 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			Trace.error("Error extracting headers: " + e.getMessage(), e);
 		}
 		return headerMap;
+	}
+	
+	/**
+	 * Extracts query string parameters from message and converts to Map
+	 */
+	private java.util.Map<String, Object> extractQueryString(Message msg) {
+		java.util.Map<String, Object> queryMap = new java.util.HashMap<>();
+		try {
+			Object queryObj = msg.get("http.querystring");
+			if (queryObj instanceof com.vordel.mime.QueryStringHeaderSet) {
+				com.vordel.mime.QueryStringHeaderSet queryParams = (com.vordel.mime.QueryStringHeaderSet) queryObj;
+				java.util.Iterator<String> nameIterator = queryParams.getHeaderNames();
+				while (nameIterator.hasNext()) {
+					String paramName = nameIterator.next();
+					Object paramValue = queryParams.get(paramName);
+					if (paramValue != null) {
+						// QueryStringHeaderSet.get() returns single value or ArrayList for multiple values
+						if (paramValue instanceof java.util.ArrayList) {
+							// Multiple values for the same parameter
+							queryMap.put(paramName, paramValue);
+						} else {
+							// Single value
+							queryMap.put(paramName, paramValue.toString());
+						}
+					}
+				}
+				Trace.debug("✅ Query string parameters extracted: " + queryMap.size() + " parameters");
+			} else {
+				Trace.debug("⚠️ http.querystring is not a QueryStringHeaderSet: " + 
+					(queryObj != null ? queryObj.getClass().getName() : "null"));
+			}
+		} catch (Exception e) {
+			Trace.error("Error extracting query string: " + e.getMessage(), e);
+		}
+		return queryMap;
 	}
 	
 	/**
