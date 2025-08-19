@@ -6,22 +6,22 @@ fields:
   functionName:
     type: string
     defaultValues:
-    - data: ""
+    - data: "my-lambda-function"
     cardinality: 1
   awsRegion:
     type: string
     defaultValues:
-    - data: us-east-1
+    - data: "us-east-1"
     cardinality: 1
   invocationType:
     type: string
     defaultValues:
-    - data: RequestResponse
+    - data: "RequestResponse"
     cardinality: 1
   logType:
     type: string
     defaultValues:
-    - data: None
+    - data: "None"
     cardinality: 1
   qualifier:
     type: string
@@ -46,12 +46,12 @@ fields:
   credentialType:
     type: string
     defaultValues:
-    - data: "local"
+    - data: "iam"
     cardinality: 1
   useIAMRole:
     type: string
     defaultValues:
-    - data: "false"
+    - data: "true"
     cardinality: 1
   awsCredential:
     type: '@ApiKeyProfile'
@@ -69,25 +69,25 @@ fields:
   payloadMethodField:
     type: string
     defaultValues:
-    - data: "request_method"
+    - data: "options.method"
     cardinality: 1
   payloadHeadersField:
     type: string
     defaultValues:
-    - data: "request_headers"
+    - data: "options.headers"
     cardinality: 1
   payloadBodyField:
     type: string
     defaultValues:
-    - data: "request_body"
+    - data: "options.body"
     cardinality: 1
   payloadUriField:
     type: string
     defaultValues:
-    - data: "request_uri"
+    - data: "options.path"
     cardinality: 1
   payloadQueryStringField:
     type: string
     defaultValues:
-    - data: "request_querystring"
+    - data: "options.query"
     cardinality: 1

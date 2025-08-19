@@ -498,11 +498,28 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	
 	/**
 	 * Builds configurable Lambda payload based on field configuration
-	 * Only includes fields that have non-empty field names configured
+	 * Supports hierarchical field names (e.g., "options.headers") and uses lambda.body as initial payload
 	 */
 	private String buildConfigurablePayload(Message msg) {
 		try {
-			java.util.Map<String, Object> payload = new java.util.HashMap<>();
+			// Start with existing lambda.body if available, otherwise empty map
+			java.util.Map<String, Object> payload;
+			Object existingBody = msg.get("lambda.body");
+			
+			if (existingBody != null && existingBody instanceof String) {
+				try {
+					// Parse existing lambda.body as JSON
+					com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+					payload = mapper.readValue((String) existingBody, java.util.Map.class);
+					Trace.debug("✅ Using existing lambda.body as payload base: " + existingBody);
+				} catch (Exception e) {
+					Trace.debug("❌ Could not parse lambda.body as JSON, starting with empty payload: " + e.getMessage());
+					payload = new java.util.HashMap<>();
+				}
+			} else {
+				Trace.debug("No lambda.body found, starting with empty payload");
+				payload = new java.util.HashMap<>();
+			}
 			
 			// Get field names from configuration
 			String methodFieldName = payloadMethodField != null ? payloadMethodField.substitute(msg) : null;
@@ -515,7 +532,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (methodFieldName != null && !methodFieldName.trim().isEmpty()) {
 				String method = msg.get("http.request.verb") != null ? msg.get("http.request.verb").toString() : null;
 				if (method != null && !method.trim().isEmpty()) {
-					payload.put(methodFieldName.trim(), method);
+					setNestedValue(payload, methodFieldName.trim(), method);
 				}
 			}
 			
@@ -523,7 +540,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (headersFieldName != null && !headersFieldName.trim().isEmpty()) {
 				java.util.Map<String, String> headerMap = extractHeaders(msg);
 				if (headerMap != null && !headerMap.isEmpty()) {
-					payload.put(headersFieldName.trim(), headerMap);
+					setNestedValue(payload, headersFieldName.trim(), headerMap);
 				}
 			}
 			
@@ -531,7 +548,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
 				String body = extractOriginalBody(msg);
 				if (body != null && !body.trim().isEmpty()) {
-					payload.put(bodyFieldName.trim(), body);
+					setNestedValue(payload, bodyFieldName.trim(), body);
 				}
 			}
 			
@@ -539,7 +556,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (uriFieldName != null && !uriFieldName.trim().isEmpty()) {
 				String uri = msg.get("http.request.uri") != null ? msg.get("http.request.uri").toString() : null;
 				if (uri != null && !uri.trim().isEmpty()) {
-					payload.put(uriFieldName.trim(), uri);
+					setNestedValue(payload, uriFieldName.trim(), uri);
 				}
 			}
 			
@@ -547,7 +564,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (queryStringFieldName != null && !queryStringFieldName.trim().isEmpty()) {
 				String queryString = msg.get("http.request.querystring") != null ? msg.get("http.request.querystring").toString() : null;
 				if (queryString != null && !queryString.trim().isEmpty()) {
-					payload.put(queryStringFieldName.trim(), queryString);
+					setNestedValue(payload, queryStringFieldName.trim(), queryString);
 				}
 			}
 			
@@ -555,12 +572,57 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 			String payloadJson = mapper.writeValueAsString(payload);
 			
-			Trace.debug("Configurable payload built with " + payload.size() + " fields: " + payloadJson);
+			Trace.debug("Configurable payload built with hierarchical structure: " + payloadJson);
 			return payloadJson;
 			
 		} catch (Exception e) {
 			Trace.error("Error building configurable payload: " + e.getMessage(), e);
 			return "{}";
+		}
+	}
+	
+	/**
+	 * Sets a nested value in the payload map, creating intermediate objects as needed
+	 * Supports hierarchical field names like "options.headers", "crypto.request", etc.
+	 */
+	private void setNestedValue(java.util.Map<String, Object> payload, String fieldPath, Object value) {
+		try {
+			if (fieldPath == null || fieldPath.trim().isEmpty()) {
+				return;
+			}
+			
+			String[] pathParts = fieldPath.split("\\.");
+			java.util.Map<String, Object> currentLevel = payload;
+			
+			// Navigate through the path, creating intermediate objects as needed
+			for (int i = 0; i < pathParts.length - 1; i++) {
+				String part = pathParts[i].trim();
+				if (part.isEmpty()) continue;
+				
+				// Get or create the next level
+				Object nextLevel = currentLevel.get(part);
+				if (nextLevel == null || !(nextLevel instanceof java.util.Map)) {
+					// Create new intermediate map
+					nextLevel = new java.util.HashMap<String, Object>();
+					currentLevel.put(part, nextLevel);
+				}
+				
+				// Cast to map and continue
+				@SuppressWarnings("unchecked")
+				java.util.Map<String, Object> nextLevelMap = (java.util.Map<String, Object>) nextLevel;
+				currentLevel = nextLevelMap;
+			}
+			
+			// Set the final value
+			String finalPart = pathParts[pathParts.length - 1].trim();
+			if (!finalPart.isEmpty()) {
+				currentLevel.put(finalPart, value);
+				Trace.debug("✅ Set nested value: " + fieldPath + " = " + 
+					(value instanceof String ? ((String) value).substring(0, Math.min(50, ((String) value).length())) : value));
+			}
+			
+		} catch (Exception e) {
+			Trace.error("Error setting nested value for " + fieldPath + ": " + e.getMessage(), e);
 		}
 	}
 	
