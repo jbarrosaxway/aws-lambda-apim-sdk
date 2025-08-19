@@ -66,6 +66,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 	protected Selector<String> payloadBodyField;
 	protected Selector<String> payloadUriField;
 	protected Selector<String> payloadQueryStringField;
+	protected Selector<String> payloadParamsPathField;
 
 	public InvokeLambdaFunctionProcessor() {
 	}
@@ -94,6 +95,7 @@ public class InvokeLambdaFunctionProcessor extends MessageProcessor {
 		this.payloadBodyField = new Selector(entity.getStringValue("payloadBodyField"), String.class);
 		this.payloadUriField = new Selector(entity.getStringValue("payloadUriField"), String.class);
 		this.payloadQueryStringField = new Selector(entity.getStringValue("payloadQueryStringField"), String.class);
+		this.payloadParamsPathField = new Selector(entity.getStringValue("payloadParamsPathField"), String.class);
 		
 		// Get client configuration (following S3 pattern exactly)
 		Entity clientConfig = ctx.getEntity(entity.getReferenceValue("clientConfiguration"));
@@ -527,6 +529,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			String bodyFieldName = payloadBodyField != null ? payloadBodyField.substitute(msg) : null;
 			String uriFieldName = payloadUriField != null ? payloadUriField.substitute(msg) : null;
 			String queryStringFieldName = payloadQueryStringField != null ? payloadQueryStringField.substitute(msg) : null;
+			String paramsPathFieldName = payloadParamsPathField != null ? payloadParamsPathField.substitute(msg) : null;
 			
 			// Add request_method if configured and not empty
 			if (methodFieldName != null && !methodFieldName.trim().isEmpty()) {
@@ -565,6 +568,21 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				String queryString = msg.get("http.request.querystring") != null ? msg.get("http.request.querystring").toString() : null;
 				if (queryString != null && !queryString.trim().isEmpty()) {
 					setNestedValue(payload, queryStringFieldName.trim(), queryString);
+				}
+			}
+			
+			// Add path parameters if configured and not empty
+			if (paramsPathFieldName != null && !paramsPathFieldName.trim().isEmpty()) {
+				Object paramsPathObj = msg.get("params.path");
+				if (paramsPathObj instanceof java.util.Map) {
+					@SuppressWarnings("unchecked")
+					java.util.Map<String, Object> paramsPathMap = (java.util.Map<String, Object>) paramsPathObj;
+					if (paramsPathMap != null && !paramsPathMap.isEmpty()) {
+						setNestedValue(payload, paramsPathFieldName.trim(), paramsPathMap);
+						Trace.debug("✅ Path parameters extracted: " + paramsPathMap);
+					}
+				} else if (paramsPathObj != null) {
+					Trace.debug("⚠️ params.path is not a Map: " + paramsPathObj.getClass().getName());
 				}
 			}
 			

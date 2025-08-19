@@ -91,3 +91,8 @@ fields:
     defaultValues:
     - data: "options.query"
     cardinality: 1
+  payloadParamsPathField:
+    type: string
+    defaultValues:
+    - data: "options.params"
+    cardinality: 1

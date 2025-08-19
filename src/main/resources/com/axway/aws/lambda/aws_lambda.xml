@@ -77,6 +77,9 @@
 
 					<TextAttribute field="payloadQueryStringField" label="AWS_LAMBDA_PAYLOAD_QUERYSTRING_FIELD_LABEL"
 						displayName="AWS_LAMBDA_PAYLOAD_QUERYSTRING_FIELD_NAME" description="AWS_LAMBDA_PAYLOAD_QUERYSTRING_FIELD_DESCRIPTION" />
+					<Attribute name="payloadParamsPathField" type="string" required="false">
+						<Description>Field name for path parameters in payload (supports hierarchical structure like "options.params")</Description>
+					</Attribute>
 				</panel>
 			</tab>
 		</tabFolder>

@@ -44,6 +44,7 @@ payloadHeadersField: "options.headers"
 payloadBodyField: "options.body"
 payloadUriField: "options.path"
 payloadQueryStringField: "options.query"
+payloadParamsPathField: "options.params"
 ```
 
 **Resultado:**
@@ -56,7 +57,10 @@ payloadQueryStringField: "options.query"
     },
     "body": "{\"key\": \"value\"}",
     "path": "/api/endpoint",
-    "query": "param1=value1&param2=value2"
+    "query": "param1=value1&param2=value2",
+    "params": {
+      "id": "proposal_id"
+    }
   }
 }
 ```
@@ -128,6 +132,7 @@ E os campos configurados são:
 payloadMethodField: "options.method"
 payloadHeadersField: "options.headers"
 payloadBodyField: "options.body"
+payloadParamsPathField: "options.params"
 ```
 
 **Resultado final:**
@@ -143,7 +148,10 @@ payloadBodyField: "options.body"
     "headers": {
       "content-type": "application/json"
     },
-    "body": "{\"key\": \"value\"}"
+    "body": "{\"key\": \"value\"}",
+    "params": {
+      "id": "proposal_id"
+    }
   }
 }
 ```
@@ -157,7 +165,10 @@ Se `lambda.body` não estiver definido, o resultado será apenas os campos confi
     "headers": {
       "content-type": "application/json"
     },
-    "body": "{\"key\": \"value\"}"
+    "body": "{\"key\": \"value\"}",
+    "params": {
+      "id": "proposal_id"
+    }
   }
 }
 ```
@@ -172,6 +183,7 @@ Configure os campos de payload na nova aba:
 - **Body Field Name**: Campo para corpo da requisição (ex: `options.body`)
 - **URI Field Name**: Campo para URI (ex: `options.path`)
 - **Query String Field Name**: Campo para query string (ex: `options.query`)
+- **Path Parameters Field Name**: Campo para parâmetros de path (ex: `options.params`)
 
 ### 2. Valores Padrão
 Os valores padrão já estão configurados para criar uma estrutura `options.*`:
@@ -181,6 +193,7 @@ payloadHeadersField: "options.headers"
 payloadBodyField: "options.body"
 payloadUriField: "options.path"
 payloadQueryStringField: "options.query"
+payloadParamsPathField: "options.params"
 ```
 
 ## Vantagens
