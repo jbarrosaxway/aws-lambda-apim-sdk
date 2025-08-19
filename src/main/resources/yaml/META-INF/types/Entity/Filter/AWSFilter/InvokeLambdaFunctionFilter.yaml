@@ -91,3 +91,8 @@ fields:
     defaultValues:
     - data: "request_querystring"
     cardinality: 1
+  payloadParamsPathField:
+    type: string
+    defaultValues:
+    - data: "request_params"
+    cardinality: 1

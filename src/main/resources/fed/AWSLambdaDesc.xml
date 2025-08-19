@@ -35,6 +35,7 @@ filter classname. "functionName" - The name of the AWS Lambda function to invoke
 		<field name="payloadBodyField" type="string" cardinality="1" />
 		<field name="payloadUriField" type="string" cardinality="1" />
 		<field name="payloadQueryStringField" type="string" cardinality="1" />
+		<field name="payloadParamsPathField" type="string" cardinality="1" />
 	</entityType>
 
 	
