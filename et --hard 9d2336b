@@ -1,0 +1,10 @@
+[33m6c4aef1[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;33mtag: [m[1;33mv2.0.12[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m chore: update version to 2.0.12 [skip ci]
+[33m2ec19a1[m Merge branch 'master' of https://github.com/jbarrosaxway/aws-lambda-apim-sdk
+[33m400de8d[m fix: correct payloadParamsPathField to use TextAttribute format in aws_lambda.xml
+[33m90490d0[m[33m ([m[1;33mtag: [m[1;33mv2.0.11[m[33m)[m chore: update version to 2.0.11 [skip ci]
+[33m5dd9203[m feat: add payloadParamsPathField support for extracting path parameters from msg.get('params.path')
+[33ma342211[m Merge branch 'master' of https://github.com/jbarrosaxway/aws-lambda-apim-sdk
+[33m10ed6f8[m docs: organize all .md files into wiki folder with new README index
+[33m813a659[m[33m ([m[1;33mtag: [m[1;33mv2.0.10[m[33m)[m chore: update version to 2.0.10 [skip ci]
+[33m9d2336b[m feat: implement hierarchical payload structure with lambda.body support
+[33m51e6624[m[33m ([m[1;33mtag: [m[1;33mv2.0.9[m[33m)[m chore: update version to 2.0.9 [skip ci]
