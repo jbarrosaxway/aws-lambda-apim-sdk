@@ -506,6 +506,25 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		try {
 			java.util.Map<String, Object> payload = new java.util.HashMap<>();
 			
+			// Check if lambda.body exists and use it as initial payload base
+			Object lambdaBodyObj = msg.get("lambda.body");
+			if (lambdaBodyObj != null && lambdaBodyObj instanceof String) {
+				String lambdaBodyStr = (String) lambdaBodyObj;
+				if (lambdaBodyStr != null && !lambdaBodyStr.trim().isEmpty()) {
+					try {
+						com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+						@SuppressWarnings("unchecked")
+						java.util.Map<String, Object> lambdaBodyMap = mapper.readValue(lambdaBodyStr, java.util.Map.class);
+						if (lambdaBodyMap != null && !lambdaBodyMap.isEmpty()) {
+							payload.putAll(lambdaBodyMap);
+							Trace.debug("✅ Using lambda.body as initial payload base: " + lambdaBodyStr.substring(0, Math.min(100, lambdaBodyStr.length())));
+						}
+					} catch (Exception e) {
+						Trace.debug("⚠️ Could not parse lambda.body as JSON: " + e.getMessage());
+					}
+				}
+			}
+			
 			// Get field names from configuration
 			String methodFieldName = payloadMethodField != null ? payloadMethodField.substitute(msg) : null;
 			String headersFieldName = payloadHeadersField != null ? payloadHeadersField.substitute(msg) : null;
@@ -518,7 +537,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (methodFieldName != null && !methodFieldName.trim().isEmpty()) {
 				String method = msg.get("http.request.verb") != null ? msg.get("http.request.verb").toString() : null;
 				if (method != null && !method.trim().isEmpty()) {
-					payload.put(methodFieldName.trim(), method);
+					setNestedValue(payload, methodFieldName.trim(), method);
 				}
 			}
 			
@@ -526,7 +545,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (headersFieldName != null && !headersFieldName.trim().isEmpty()) {
 				java.util.Map<String, String> headerMap = extractHeaders(msg);
 				if (headerMap != null && !headerMap.isEmpty()) {
-					payload.put(headersFieldName.trim(), headerMap);
+					setNestedValue(payload, headersFieldName.trim(), headerMap);
 				}
 			}
 			
@@ -534,7 +553,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
 				String body = extractOriginalBody(msg);
 				if (body != null && !body.trim().isEmpty()) {
-					payload.put(bodyFieldName.trim(), body);
+					setNestedValue(payload, bodyFieldName.trim(), body);
 				}
 			}
 			
@@ -542,7 +561,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			if (uriFieldName != null && !uriFieldName.trim().isEmpty()) {
 				String uri = msg.get("http.request.uri") != null ? msg.get("http.request.uri").toString() : null;
 				if (uri != null && !uri.trim().isEmpty()) {
-					payload.put(uriFieldName.trim(), uri);
+					setNestedValue(payload, uriFieldName.trim(), uri);
 				}
 			}
 			
