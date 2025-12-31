@@ -499,6 +499,47 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	}
 	
 	/**
+	 * Gets Content-Type from message headers
+	 */
+	private String getContentType(Message msg) {
+		try {
+			java.util.Map<String, String> headerMap = extractHeaders(msg);
+			if (headerMap != null) {
+				// Try case-insensitive lookup
+				for (java.util.Map.Entry<String, String> entry : headerMap.entrySet()) {
+					if ("content-type".equalsIgnoreCase(entry.getKey())) {
+						return entry.getValue();
+					}
+				}
+			}
+		} catch (Exception e) {
+			Trace.debug("Error getting Content-Type: " + e.getMessage());
+		}
+		return null;
+	}
+	
+	/**
+	 * Attempts to parse a string as JSON and return as Object (Map or List)
+	 * Returns null if parsing fails or content is not valid JSON
+	 */
+	private Object tryParseJson(String jsonString) {
+		if (jsonString == null || jsonString.trim().isEmpty()) {
+			return null;
+		}
+		
+		try {
+			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+			// Try to parse as generic Object (can be Map or List)
+			Object jsonObj = mapper.readValue(jsonString, Object.class);
+			Trace.debug("✅ Successfully parsed body as JSON object");
+			return jsonObj;
+		} catch (Exception e) {
+			Trace.debug("⚠️ Could not parse body as JSON: " + e.getMessage());
+			return null;
+		}
+	}
+	
+	/**
 	 * Builds configurable Lambda payload based on field configuration
 	 * Only includes fields that have non-empty field names configured
 	 */
@@ -550,10 +591,32 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			}
 			
 			// Add request_body if configured and not empty
+			// Intelligently converts JSON to Map/List if Content-Type is application/json
 			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
 				String body = extractOriginalBody(msg);
 				if (body != null && !body.trim().isEmpty()) {
-					setNestedValue(payload, bodyFieldName.trim(), body);
+					// Check Content-Type to determine if body should be parsed as JSON
+					String contentType = getContentType(msg);
+					boolean isJsonContentType = contentType != null && 
+						contentType.toLowerCase().contains("application/json");
+					
+					if (isJsonContentType) {
+						// Try to parse as JSON object (Map or List)
+						Object bodyObj = tryParseJson(body);
+						if (bodyObj != null) {
+							// Successfully parsed as JSON - add as object (Map/List)
+							setNestedValue(payload, bodyFieldName.trim(), bodyObj);
+							Trace.debug("✅ Body parsed as JSON object and added to payload");
+						} else {
+							// Parse failed - fallback to string
+							setNestedValue(payload, bodyFieldName.trim(), body);
+							Trace.debug("⚠️ Content-Type is JSON but parse failed, using body as string");
+						}
+					} else {
+						// Not JSON Content-Type - add as string
+						setNestedValue(payload, bodyFieldName.trim(), body);
+						Trace.debug("Body added as string (Content-Type: " + contentType + ")");
+					}
 				}
 			}
 			
