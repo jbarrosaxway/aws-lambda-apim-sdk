@@ -540,7 +540,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				Trace.debug("Header map is null");
 			}
 		} catch (Exception e) {
-			Trace.warn("Error getting Content-Type: " + e.getMessage());
+			Trace.error("Error getting Content-Type: " + e.getMessage());
 			Trace.debug("Exception details: ", e);
 		}
 		return null;
@@ -565,15 +565,15 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			Trace.debug("Parsed object type: " + jsonObj.getClass().getName());
 			return jsonObj;
 		} catch (com.fasterxml.jackson.core.JsonParseException e) {
-			Trace.warn("⚠️ JSON parse error: " + e.getMessage());
+			Trace.error("⚠️ JSON parse error: " + e.getMessage());
 			Trace.debug("JSON parse exception at line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr());
 			return null;
 		} catch (com.fasterxml.jackson.databind.JsonMappingException e) {
-			Trace.warn("⚠️ JSON mapping error: " + e.getMessage());
+			Trace.error("⚠️ JSON mapping error: " + e.getMessage());
 			Trace.debug("JSON mapping exception details: ", e);
 			return null;
 		} catch (Exception e) {
-			Trace.warn("⚠️ Could not parse body as JSON: " + e.getMessage());
+			Trace.error("⚠️ Could not parse body as JSON: " + e.getMessage());
 			Trace.debug("Exception type: " + e.getClass().getName());
 			Trace.debug("Exception details: ", e);
 			return null;
@@ -617,7 +617,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 							}
 						}
 					} catch (Exception e) {
-						Trace.warn("⚠️ Could not parse lambda.body as JSON: " + e.getMessage());
+						Trace.info("⚠️ Could not parse lambda.body as JSON: " + e.getMessage());
 						Trace.debug("Exception details: ", e);
 					}
 				} else {
@@ -669,14 +669,14 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				// Check if this field already exists in payload (from lambda.body)
 				Object existingValue = getNestedValue(payload, bodyFieldName.trim());
 				if (existingValue != null) {
-					Trace.warn("⚠️ Field '" + bodyFieldName.trim() + "' already exists in payload from lambda.body");
-					Trace.warn("Existing value type: " + existingValue.getClass().getName());
+					Trace.info("⚠️ Field '" + bodyFieldName.trim() + "' already exists in payload from lambda.body");
+					Trace.info("Existing value type: " + existingValue.getClass().getName());
 					if (existingValue instanceof String) {
 						String strValue = (String) existingValue;
-						Trace.warn("⚠️ Existing value is STRING - will be OVERWRITTEN with parsed object");
-						Trace.warn("Existing value preview: " + strValue.substring(0, Math.min(200, strValue.length())));
+						Trace.info("⚠️ Existing value is STRING - will be OVERWRITTEN with parsed object");
+						Trace.info("Existing value preview: " + strValue.substring(0, Math.min(200, strValue.length())));
 					} else {
-						Trace.warn("Existing value is " + existingValue.getClass().getName() + " - will be OVERWRITTEN");
+						Trace.info("Existing value is " + existingValue.getClass().getName() + " - will be OVERWRITTEN");
 					}
 				}
 				
@@ -726,7 +726,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 									Trace.info("✅ Verification: Field is correctly set as object (not string)");
 								}
 							} else {
-								Trace.warn("⚠️ Verification: Field '" + bodyFieldName.trim() + "' is null after setNestedValue");
+								Trace.info("⚠️ Verification: Field '" + bodyFieldName.trim() + "' is null after setNestedValue");
 							}
 						} else {
 							// Content-Type says JSON but parse failed - this is unexpected
@@ -734,8 +734,8 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 							Trace.error("❌ This may indicate malformed JSON in the request body");
 							// Still overwrite any existing value from lambda.body, but as string (fallback)
 							setNestedValue(payload, bodyFieldName.trim(), body);
-							Trace.warn("⚠️ Falling back to string (parse failed)");
-							Trace.warn("⚠️ This still overwrites any existing value from lambda.body");
+							Trace.info("⚠️ Falling back to string (parse failed)");
+							Trace.info("⚠️ This still overwrites any existing value from lambda.body");
 						}
 					} else {
 						// Not JSON Content-Type - add as string (maintains backward compatibility)
@@ -745,9 +745,9 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 						Trace.info("This overwrites any existing value from lambda.body");
 					}
 				} else {
-					Trace.warn("⚠️ Body is null or empty, skipping");
+					Trace.info("⚠️ Body is null or empty, skipping");
 					if (existingValue != null) {
-						Trace.warn("⚠️ Keeping existing value from lambda.body (may be string!)");
+						Trace.info("⚠️ Keeping existing value from lambda.body (may be string!)");
 					}
 				}
 			} else {
