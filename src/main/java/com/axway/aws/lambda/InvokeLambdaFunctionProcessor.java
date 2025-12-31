@@ -358,18 +358,33 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 		}
 		
 		// Build payload based on configuration
+		Trace.info("=== Building Lambda Payload ===");
 		String payload = buildConfigurablePayload(msg);
 		if (payload == null || payload.trim().isEmpty()) {
 			// Fallback to original body if no configuration
+			Trace.info("Payload from buildConfigurablePayload is null or empty, using fallback");
 			payload = contentBody.substitute(msg);
 			if (payload == null || payload.trim().isEmpty()) {
 				payload = "{}";
+				Trace.info("Using empty JSON payload: {}");
+			} else {
+				Trace.info("Using content.body as payload (length: " + payload.length() + ")");
 			}
 		}
 		
-		Trace.info("Invoking Lambda function with retry...");
+		Trace.info("=== Lambda Invocation Details ===");
+		Trace.info("Function Name: " + functionNameValue);
+		Trace.info("Region: " + regionValue);
+		Trace.info("Invocation Type: " + invocationTypeValue);
+		Trace.info("Log Type: " + logTypeValue);
 		Trace.info("Using IAM Role: " + useIAMRoleValue);
 		Trace.info("Memory Size: " + memorySizeValue + " MB");
+		Trace.info("Payload length: " + payload.length() + " characters");
+		Trace.info("=== Payload that will be sent to Lambda ===");
+		Trace.info(payload);
+		Trace.info("=== End of Payload ===");
+		
+		Trace.info("Invoking Lambda function with retry...");
 		
 		// Debug IRSA during actual invocation
 		Trace.info("=== IRSA Debug During Invoke ===");
@@ -390,6 +405,7 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 				AWSLambda lambdaClient = lambdaClientBuilder.withRegion(regionValue).build();
 				
 				// Create request
+				Trace.info("=== Creating Lambda Invoke Request ===");
 				InvokeRequest invokeRequest = new InvokeRequest()
 					.withFunctionName(functionNameValue)
 					.withPayload(ByteBuffer.wrap(payload.getBytes()))
@@ -402,8 +418,13 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 					Trace.info("Using qualifier: " + qualifierValue);
 				}
 				
+				Trace.info("InvokeRequest created successfully");
+				Trace.info("Payload bytes: " + payload.getBytes().length + " bytes");
+				
 				// Invoke Lambda function
+				Trace.info("=== Invoking Lambda Function ===");
 				InvokeResult invokeResult = lambdaClient.invoke(invokeRequest);
+				Trace.info("Lambda function invoked successfully");
 				
 				// Process response
 				return processInvokeResult(invokeResult, msg, memorySizeValue);
@@ -504,16 +525,23 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	private String getContentType(Message msg) {
 		try {
 			java.util.Map<String, String> headerMap = extractHeaders(msg);
+			Trace.debug("Extracted " + (headerMap != null ? headerMap.size() : 0) + " headers");
 			if (headerMap != null) {
 				// Try case-insensitive lookup
 				for (java.util.Map.Entry<String, String> entry : headerMap.entrySet()) {
 					if ("content-type".equalsIgnoreCase(entry.getKey())) {
+						Trace.debug("Found Content-Type header: " + entry.getValue());
 						return entry.getValue();
 					}
 				}
+				Trace.debug("Content-Type header not found in headers");
+				Trace.debug("Available headers: " + headerMap.keySet());
+			} else {
+				Trace.debug("Header map is null");
 			}
 		} catch (Exception e) {
-			Trace.debug("Error getting Content-Type: " + e.getMessage());
+			Trace.warn("Error getting Content-Type: " + e.getMessage());
+			Trace.debug("Exception details: ", e);
 		}
 		return null;
 	}
@@ -524,17 +552,30 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	 */
 	private Object tryParseJson(String jsonString) {
 		if (jsonString == null || jsonString.trim().isEmpty()) {
+			Trace.debug("JSON string is null or empty");
 			return null;
 		}
 		
 		try {
+			Trace.debug("Attempting JSON parse of string (length: " + jsonString.length() + ")");
 			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 			// Try to parse as generic Object (can be Map or List)
 			Object jsonObj = mapper.readValue(jsonString, Object.class);
-			Trace.debug("✅ Successfully parsed body as JSON object");
+			Trace.info("✅ Successfully parsed body as JSON object");
+			Trace.debug("Parsed object type: " + jsonObj.getClass().getName());
 			return jsonObj;
+		} catch (com.fasterxml.jackson.core.JsonParseException e) {
+			Trace.warn("⚠️ JSON parse error: " + e.getMessage());
+			Trace.debug("JSON parse exception at line " + e.getLocation().getLineNr() + ", column " + e.getLocation().getColumnNr());
+			return null;
+		} catch (com.fasterxml.jackson.databind.JsonMappingException e) {
+			Trace.warn("⚠️ JSON mapping error: " + e.getMessage());
+			Trace.debug("JSON mapping exception details: ", e);
+			return null;
 		} catch (Exception e) {
-			Trace.debug("⚠️ Could not parse body as JSON: " + e.getMessage());
+			Trace.warn("⚠️ Could not parse body as JSON: " + e.getMessage());
+			Trace.debug("Exception type: " + e.getClass().getName());
+			Trace.debug("Exception details: ", e);
 			return null;
 		}
 	}
@@ -545,25 +586,45 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 	 */
 	private String buildConfigurablePayload(Message msg) {
 		try {
+			Trace.info("=== Starting buildConfigurablePayload ===");
 			java.util.Map<String, Object> payload = new java.util.HashMap<>();
 			
 			// Check if lambda.body exists and use it as initial payload base
 			Object lambdaBodyObj = msg.get("lambda.body");
+			Trace.debug("lambda.body object: " + (lambdaBodyObj != null ? lambdaBodyObj.getClass().getName() : "null"));
 			if (lambdaBodyObj != null && lambdaBodyObj instanceof String) {
 				String lambdaBodyStr = (String) lambdaBodyObj;
+				Trace.debug("lambda.body string length: " + (lambdaBodyStr != null ? lambdaBodyStr.length() : "null"));
 				if (lambdaBodyStr != null && !lambdaBodyStr.trim().isEmpty()) {
+					Trace.debug("lambda.body preview: " + lambdaBodyStr.substring(0, Math.min(200, lambdaBodyStr.length())));
 					try {
 						com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 						@SuppressWarnings("unchecked")
 						java.util.Map<String, Object> lambdaBodyMap = mapper.readValue(lambdaBodyStr, java.util.Map.class);
 						if (lambdaBodyMap != null && !lambdaBodyMap.isEmpty()) {
 							payload.putAll(lambdaBodyMap);
-							Trace.debug("✅ Using lambda.body as initial payload base: " + lambdaBodyStr.substring(0, Math.min(100, lambdaBodyStr.length())));
+							Trace.info("✅ Using lambda.body as initial payload base with " + lambdaBodyMap.size() + " entries");
+							Trace.debug("lambda.body entries: " + lambdaBodyMap.keySet());
+							for (java.util.Map.Entry<String, Object> entry : lambdaBodyMap.entrySet()) {
+								Object value = entry.getValue();
+								String valueType = value != null ? value.getClass().getName() : "null";
+								if (value instanceof String) {
+									String strValue = (String) value;
+									Trace.debug("  - " + entry.getKey() + ": " + valueType + " (length: " + strValue.length() + ", preview: " + strValue.substring(0, Math.min(100, strValue.length())) + ")");
+								} else {
+									Trace.debug("  - " + entry.getKey() + ": " + valueType);
+								}
+							}
 						}
 					} catch (Exception e) {
-						Trace.debug("⚠️ Could not parse lambda.body as JSON: " + e.getMessage());
+						Trace.warn("⚠️ Could not parse lambda.body as JSON: " + e.getMessage());
+						Trace.debug("Exception details: ", e);
 					}
+				} else {
+					Trace.debug("lambda.body is null or empty");
 				}
+			} else {
+				Trace.debug("lambda.body is null or not a String");
 			}
 			
 			// Get field names from configuration
@@ -573,6 +634,14 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			String uriFieldName = payloadUriField != null ? payloadUriField.substitute(msg) : null;
 			String queryStringFieldName = payloadQueryStringField != null ? payloadQueryStringField.substitute(msg) : null;
 			String paramsPathFieldName = payloadParamsPathField != null ? payloadParamsPathField.substitute(msg) : null;
+			
+			Trace.info("=== Field Configuration ===");
+			Trace.info("payloadMethodField: " + methodFieldName);
+			Trace.info("payloadHeadersField: " + headersFieldName);
+			Trace.info("payloadBodyField: " + bodyFieldName);
+			Trace.info("payloadUriField: " + uriFieldName);
+			Trace.info("payloadQueryStringField: " + queryStringFieldName);
+			Trace.info("payloadParamsPathField: " + paramsPathFieldName);
 			
 			// Add request_method if configured and not empty
 			if (methodFieldName != null && !methodFieldName.trim().isEmpty()) {
@@ -591,33 +660,98 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			}
 			
 			// Add request_body if configured and not empty
-			// Intelligently converts JSON to Map/List if Content-Type is application/json
+			// Intelligently converts JSON to Map/List if Content-Type is application/json or body looks like JSON
+			// IMPORTANT: This will ALWAYS overwrite any value from lambda.body to ensure body is sent as object, not string
 			if (bodyFieldName != null && !bodyFieldName.trim().isEmpty()) {
+				Trace.info("=== Processing request_body ===");
+				Trace.info("Body field name: " + bodyFieldName.trim());
+				
+				// Check if this field already exists in payload (from lambda.body)
+				Object existingValue = getNestedValue(payload, bodyFieldName.trim());
+				if (existingValue != null) {
+					Trace.warn("⚠️ Field '" + bodyFieldName.trim() + "' already exists in payload from lambda.body");
+					Trace.warn("Existing value type: " + existingValue.getClass().getName());
+					if (existingValue instanceof String) {
+						String strValue = (String) existingValue;
+						Trace.warn("⚠️ Existing value is STRING - will be OVERWRITTEN with parsed object");
+						Trace.warn("Existing value preview: " + strValue.substring(0, Math.min(200, strValue.length())));
+					} else {
+						Trace.warn("Existing value is " + existingValue.getClass().getName() + " - will be OVERWRITTEN");
+					}
+				}
+				
 				String body = extractOriginalBody(msg);
 				if (body != null && !body.trim().isEmpty()) {
+					Trace.info("Body extracted successfully");
+					Trace.info("Body length: " + body.length());
+					Trace.info("Body preview (first 500 chars): " + body.substring(0, Math.min(500, body.length())));
+					
 					// Check Content-Type to determine if body should be parsed as JSON
+					// ONLY parse as JSON if Content-Type is application/json
 					String contentType = getContentType(msg);
 					boolean isJsonContentType = contentType != null && 
 						contentType.toLowerCase().contains("application/json");
 					
+					Trace.info("Content-Type: " + (contentType != null ? contentType : "null"));
+					Trace.info("Is JSON Content-Type: " + isJsonContentType);
+					
 					if (isJsonContentType) {
+						// Content-Type is application/json - ALWAYS attempt to parse as JSON
+						Trace.info("Content-Type is application/json - attempting to parse body as JSON...");
 						// Try to parse as JSON object (Map or List)
 						Object bodyObj = tryParseJson(body);
 						if (bodyObj != null) {
 							// Successfully parsed as JSON - add as object (Map/List)
+							// This will ALWAYS overwrite any existing value at this path from lambda.body
+							// This ensures request_body_args is sent as object, not string
 							setNestedValue(payload, bodyFieldName.trim(), bodyObj);
-							Trace.debug("✅ Body parsed as JSON object and added to payload");
+							Trace.info("✅ Body parsed as JSON object and added to payload");
+							Trace.info("✅ This OVERWRITES any existing value from lambda.body");
+							Trace.info("Body object type: " + bodyObj.getClass().getName());
+							if (bodyObj instanceof java.util.Map) {
+								java.util.Map<?, ?> bodyMap = (java.util.Map<?, ?>) bodyObj;
+								Trace.info("Body object is Map with " + bodyMap.size() + " entries");
+								Trace.debug("Body Map keys: " + bodyMap.keySet());
+							} else if (bodyObj instanceof java.util.List) {
+								Trace.info("Body object is List with " + ((java.util.List<?>) bodyObj).size() + " items");
+							}
+							
+							// Verify that the value was actually set correctly
+							Object verifyValue = getNestedValue(payload, bodyFieldName.trim());
+							if (verifyValue != null) {
+								Trace.info("✅ Verification: Field '" + bodyFieldName.trim() + "' now has type: " + verifyValue.getClass().getName());
+								if (verifyValue instanceof String) {
+									Trace.error("❌ ERROR: Field is still STRING after setNestedValue! This should not happen!");
+								} else {
+									Trace.info("✅ Verification: Field is correctly set as object (not string)");
+								}
+							} else {
+								Trace.warn("⚠️ Verification: Field '" + bodyFieldName.trim() + "' is null after setNestedValue");
+							}
 						} else {
-							// Parse failed - fallback to string
+							// Content-Type says JSON but parse failed - this is unexpected
+							Trace.error("❌ ERROR: Content-Type is application/json but JSON parse failed!");
+							Trace.error("❌ This may indicate malformed JSON in the request body");
+							// Still overwrite any existing value from lambda.body, but as string (fallback)
 							setNestedValue(payload, bodyFieldName.trim(), body);
-							Trace.debug("⚠️ Content-Type is JSON but parse failed, using body as string");
+							Trace.warn("⚠️ Falling back to string (parse failed)");
+							Trace.warn("⚠️ This still overwrites any existing value from lambda.body");
 						}
 					} else {
-						// Not JSON Content-Type - add as string
+						// Not JSON Content-Type - add as string (maintains backward compatibility)
+						// But still overwrite any existing value from lambda.body
 						setNestedValue(payload, bodyFieldName.trim(), body);
-						Trace.debug("Body added as string (Content-Type: " + contentType + ")");
+						Trace.info("Body added as string (Content-Type: " + contentType + " is not application/json)");
+						Trace.info("This overwrites any existing value from lambda.body");
+					}
+				} else {
+					Trace.warn("⚠️ Body is null or empty, skipping");
+					if (existingValue != null) {
+						Trace.warn("⚠️ Keeping existing value from lambda.body (may be string!)");
 					}
 				}
+			} else {
+				Trace.debug("Body field name not configured, skipping request_body");
 			}
 			
 			// Add request_uri if configured and not empty
@@ -652,10 +786,105 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			}
 			
 			// Convert to JSON
+			Trace.info("=== Final Payload Summary (Before Serialization) ===");
+			Trace.info("Total payload fields: " + payload.size());
+			Trace.info("Payload keys: " + payload.keySet());
+			
+			// Get body field name for special checking
+			String bodyFieldNameForCheck = payloadBodyField != null ? payloadBodyField.substitute(msg) : null;
+			
+			Trace.info("=== Payload Field Details ===");
+			// Log each field and its type with detailed information
+			for (java.util.Map.Entry<String, Object> entry : payload.entrySet()) {
+				Object value = entry.getValue();
+				String valueType = value != null ? value.getClass().getName() : "null";
+				boolean isBodyField = bodyFieldNameForCheck != null && entry.getKey().equals(bodyFieldNameForCheck);
+				
+				if (value instanceof String) {
+					String strValue = (String) value;
+					if (isBodyField) {
+						Trace.error("  ❌ " + entry.getKey() + ": STRING (length: " + strValue.length() + ") - THIS IS WRONG! Should be object, not string!");
+						if (strValue.length() > 0 && (strValue.startsWith("{") || strValue.startsWith("["))) {
+							Trace.error("    ❌ Value looks like JSON string but should be parsed as object!");
+							Trace.error("    ❌ Content preview: " + strValue.substring(0, Math.min(300, strValue.length())));
+						} else {
+							Trace.error("    ❌ Content preview: " + strValue.substring(0, Math.min(300, strValue.length())));
+						}
+					} else {
+						Trace.info("  - " + entry.getKey() + ": STRING (length: " + strValue.length() + ")");
+						if (strValue.length() > 0) {
+							Trace.info("    Content preview: " + strValue.substring(0, Math.min(200, strValue.length())));
+						}
+					}
+				} else if (value instanceof java.util.Map) {
+					@SuppressWarnings("unchecked")
+					java.util.Map<String, Object> mapValue = (java.util.Map<String, Object>) value;
+					if (isBodyField) {
+						Trace.info("  ✅ " + entry.getKey() + ": OBJECT (Map with " + mapValue.size() + " entries) - CORRECT! This is an object");
+						Trace.info("    Map keys: " + mapValue.keySet());
+						// Show first few entries for body field
+						int count = 0;
+						for (java.util.Map.Entry<String, Object> mapEntry : mapValue.entrySet()) {
+							if (count++ < 5) {
+								Object mapEntryValue = mapEntry.getValue();
+								String mapEntryType = mapEntryValue != null ? mapEntryValue.getClass().getSimpleName() : "null";
+								if (mapEntryValue instanceof String) {
+									String str = (String) mapEntryValue;
+									Trace.info("      - " + mapEntry.getKey() + ": " + mapEntryType + " = " + str.substring(0, Math.min(100, str.length())));
+								} else {
+									Trace.info("      - " + mapEntry.getKey() + ": " + mapEntryType);
+								}
+							}
+						}
+						if (mapValue.size() > 5) {
+							Trace.info("      ... and " + (mapValue.size() - 5) + " more entries");
+						}
+					} else {
+						Trace.info("  - " + entry.getKey() + ": OBJECT (Map with " + mapValue.size() + " entries)");
+						Trace.info("    Map keys: " + mapValue.keySet());
+					}
+				} else if (value instanceof java.util.List) {
+					java.util.List<?> listValue = (java.util.List<?>) value;
+					if (isBodyField) {
+						Trace.info("  ✅ " + entry.getKey() + ": OBJECT (List with " + listValue.size() + " items) - CORRECT! This is an object");
+					} else {
+						Trace.info("  - " + entry.getKey() + ": OBJECT (List with " + listValue.size() + " items)");
+					}
+				} else {
+					Trace.info("  - " + entry.getKey() + ": " + valueType + " = " + (value != null ? value.toString() : "null"));
+				}
+			}
+			
+			// Serialize to JSON
 			com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
 			String payloadJson = mapper.writeValueAsString(payload);
 			
-			Trace.debug("Configurable payload built with " + payload.size() + " fields: " + payloadJson);
+			Trace.info("=== Payload Serialization ===");
+			Trace.info("✅ Configurable payload built successfully");
+			Trace.info("Payload JSON length: " + payloadJson.length() + " characters");
+			
+			// Show full JSON payload (important for debugging)
+			Trace.info("=== Complete Payload JSON (What will be sent to Lambda) ===");
+			Trace.info(payloadJson);
+			Trace.info("=== End of Payload JSON ===");
+			
+			// Also show formatted version if not too large
+			if (payloadJson.length() < 5000) {
+				try {
+					com.fasterxml.jackson.databind.ObjectMapper prettyMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+					com.fasterxml.jackson.databind.JsonNode jsonNode = prettyMapper.readTree(payloadJson);
+					String prettyJson = prettyMapper.writerWithDefaultPrettyPrinter().writeValueAsString(jsonNode);
+					Trace.info("=== Formatted Payload JSON (Pretty Print) ===");
+					Trace.info(prettyJson);
+					Trace.info("=== End of Formatted Payload JSON ===");
+				} catch (Exception e) {
+					Trace.debug("Could not format JSON for pretty print: " + e.getMessage());
+				}
+			} else {
+				Trace.info("Payload too large for pretty print, showing first 2000 characters:");
+				Trace.info(payloadJson.substring(0, Math.min(2000, payloadJson.length())));
+			}
+			
 			return payloadJson;
 			
 		} catch (Exception e) {
@@ -837,6 +1066,26 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 			Trace.error("❌ Error extracting original body: " + e.getMessage(), e);
 			return "";
 		}
+	}
+	
+	/**
+	 * Gets a nested value from a Map.
+	 * This is useful for handling cases where a field name might contain dots,
+	 * e.g., "request_headers.Content-Type" or "params.path.id".
+	 */
+	private Object getNestedValue(java.util.Map<String, Object> map, String key) {
+		String[] keys = key.split("\\.");
+		java.util.Map<String, Object> currentMap = map;
+		
+		for (int i = 0; i < keys.length - 1; i++) {
+			String currentKey = keys[i];
+			Object nextObj = currentMap.get(currentKey);
+			if (nextObj == null || !(nextObj instanceof java.util.Map)) {
+				return null;
+			}
+			currentMap = (java.util.Map<String, Object>) nextObj;
+		}
+		return currentMap.get(keys[keys.length - 1]);
 	}
 	
 	/**
