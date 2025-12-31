@@ -687,17 +687,34 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 					Trace.info("Body preview (first 500 chars): " + body.substring(0, Math.min(500, body.length())));
 					
 					// Check Content-Type to determine if body should be parsed as JSON
-					// ONLY parse as JSON if Content-Type is application/json
+					// Also check if body object is JSONBody (indicates JSON even without Content-Type header)
 					String contentType = getContentType(msg);
 					boolean isJsonContentType = contentType != null && 
 						contentType.toLowerCase().contains("application/json");
 					
+					// Check if body object is JSONBody (indicates JSON content)
+					boolean isJsonBodyType = false;
+					try {
+						Object bodyObj = msg.get("content.body");
+						if (bodyObj != null && bodyObj.getClass().getName().contains("JSONBody")) {
+							isJsonBodyType = true;
+							Trace.info("Body object is JSONBody - treating as JSON");
+						}
+					} catch (Exception e) {
+						Trace.debug("Could not check body object type: " + e.getMessage());
+					}
+					
 					Trace.info("Content-Type: " + (contentType != null ? contentType : "null"));
 					Trace.info("Is JSON Content-Type: " + isJsonContentType);
+					Trace.info("Is JSONBody type: " + isJsonBodyType);
 					
-					if (isJsonContentType) {
-						// Content-Type is application/json - ALWAYS attempt to parse as JSON
-						Trace.info("Content-Type is application/json - attempting to parse body as JSON...");
+					// Parse as JSON if Content-Type is application/json OR body is JSONBody type
+					if (isJsonContentType || isJsonBodyType) {
+						if (isJsonContentType) {
+							Trace.info("Content-Type is application/json - attempting to parse body as JSON...");
+						} else {
+							Trace.info("Body is JSONBody type (even without Content-Type header) - attempting to parse body as JSON...");
+						}
 						// Try to parse as JSON object (Map or List)
 						Object bodyObj = tryParseJson(body);
 						if (bodyObj != null) {
@@ -729,8 +746,12 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 								Trace.info("⚠️ Verification: Field '" + bodyFieldName.trim() + "' is null after setNestedValue");
 							}
 						} else {
-							// Content-Type says JSON but parse failed - this is unexpected
-							Trace.error("❌ ERROR: Content-Type is application/json but JSON parse failed!");
+							// Content-Type or JSONBody type indicates JSON but parse failed - this is unexpected
+							if (isJsonContentType) {
+								Trace.error("❌ ERROR: Content-Type is application/json but JSON parse failed!");
+							} else {
+								Trace.error("❌ ERROR: Body is JSONBody type but JSON parse failed!");
+							}
 							Trace.error("❌ This may indicate malformed JSON in the request body");
 							// Still overwrite any existing value from lambda.body, but as string (fallback)
 							setNestedValue(payload, bodyFieldName.trim(), body);
@@ -738,10 +759,10 @@ msg.put("aws.lambda.error", "Invoke Lambda Function client builder was not confi
 							Trace.info("⚠️ This still overwrites any existing value from lambda.body");
 						}
 					} else {
-						// Not JSON Content-Type - add as string (maintains backward compatibility)
+						// Not JSON Content-Type and not JSONBody type - add as string (maintains backward compatibility)
 						// But still overwrite any existing value from lambda.body
 						setNestedValue(payload, bodyFieldName.trim(), body);
-						Trace.info("Body added as string (Content-Type: " + contentType + " is not application/json)");
+						Trace.info("Body added as string (Content-Type: " + contentType + " is not application/json and body is not JSONBody type)");
 						Trace.info("This overwrites any existing value from lambda.body");
 					}
 				} else {
